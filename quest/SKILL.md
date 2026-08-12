@@ -1,6 +1,6 @@
 ---
 name: quest
-description: Persistent objective tracking across agent turns and session boundaries. When triggered, read .opencode/quest.json from the project root to discover any active quest, inject its objective as an ACTIVE QUEST block into every relevant response, and respond to /quest commands (show, status, update, complete, clear). Use this skill whenever the user wants to set a high-level objective for the current project, ask "what are we trying to accomplish?", runs /quest show|status|update|complete|clear, or when the agent detects drift from a stated goal across many turns.
+description: Persistent objective and in-flight execution tracking across agent turns, context compaction, context exhaustion, and session boundaries. Use when the user sets or works on a high-level project objective, asks what is being accomplished, runs /quest show|status|update|complete|clear, resumes work after compaction, or needs a long multi-step task to continue without losing completed steps and the next action.
 ---
 
 # QuestSkill — persistent objective tracking
@@ -27,6 +27,16 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
   "createdAt": "<ISO-8601>",
   "updatedAt": "<ISO-8601>",
   "progress": "...",
+  "checkpoint": {
+    "summary": "...",
+    "completed": [],
+    "currentStep": "...",
+    "remaining": [],
+    "blockers": [],
+    "verification": [],
+    "nextAction": "...",
+    "updatedAt": "<ISO-8601>"
+  },
   "completedAt": "<ISO-8601>"
 }
 ```
@@ -41,6 +51,7 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
 | `createdAt` | ISO-8601 | Timestamp of creation. Set once, never modified. |
 | `updatedAt` | ISO-8601 | Updated whenever the objective or status changes. |
 | `progress` | string (optional) | User-authored or legacy progress text. Display it when present, but do not mutate it automatically during ordinary work. Repository evidence remains authoritative. |
+| `checkpoint` | object (optional) | Durable execution handoff for an actively running multi-step task. It records completed work, current step, remaining work, blockers, verification evidence, and the exact next action. |
 | `completedAt` | ISO-8601 (optional) | Set when the agent marks the quest as completed. Leave blank while status is `"active"`. |
 
 ## FILE MANAGEMENT PROTOCOL
@@ -70,18 +81,11 @@ Treat this as the persistent high-level objective for the current project. The u
 Replace `<quest objective>` with the exact `objective` text from quest.json — do NOT modify, summarize, or paraphrase it.
 
 ### When to inject
-- The quest file exists and `status === "active"`.
-- The user's message is related to project work (coding, architecture, debugging, design — almost everything in this project).
 
-### When NOT to inject
-- No quest file exists or the quest has been cleared.
-- `status === "completed"` — do not inject completed quests; the agent should note completion is recorded but move on.
-- The user's message is a quest command itself (`/quest show`, `/quest status`, etc.) — respond directly to the command without the block.
-- The user explicitly asks about quest state in plain language ("What's our goal?", "Show me the quest") — respond without the block.
-- The user sends a short greeting unrelated to project work (e.g., "hey", "thanks") — respond naturally without the block.
+The plugin injects effective system context on every model turn while the Quest is active. This unconditional internal injection is intentional: it guarantees rediscovery after a new session or compaction. Do not repeat the block in visible response text for Quest commands, greetings, or unrelated requests. Completed, cleared, and missing Quests are not injected.
 
 ### Compactness
-Inject ONLY the objective text and the constraint paragraph above it. Do NOT inject timestamps, IDs, progress summaries, audit history, or any other metadata into the block on every turn.
+Inject the objective and constraint paragraph. When an in-flight checkpoint exists, also inject its compact resume fields. Do NOT inject timestamps, IDs, objective history, or audit logs.
 
 ### Fresh reads
 Always re-read `.opencode/quest.json` at the top of your response processing — never rely on previously cached quest context. After any `/quest` command that mutates the file (update, complete, clear), re-read to confirm the write succeeded.
@@ -102,6 +106,19 @@ When the user invokes this pattern:
 5. If `.opencode/quest.json` is not already ignored or intentionally tracked, mention once that `/.opencode/quest.json` can be added to the consuming repository's `.gitignore`. Do not edit ignore rules without permission.
 
 Do not write generated progress notes after ordinary project turns. The v1 command set has no implicit progress mutation; `/quest status` computes its assessment from current evidence without saving it.
+
+## Long-running execution and context exhaustion
+
+Treat a context limit as a recoverable continuation boundary, not a reason to stop the Quest or return control to the user.
+
+1. Before beginning a long multi-step implementation, call `quest_checkpoint` with `action: "save"`. Record the planned steps in `remaining`, the first `currentStep`, and an executable `nextAction`.
+2. After every meaningful milestone, test run, commit, failure, or change of approach, save a fresh checkpoint. Keep it concise and factual; repository state remains authoritative.
+3. When context is getting tight, checkpoint before reading another large file, running a broad investigation, or starting another implementation phase. Prefer a safe persisted boundary over trying to squeeze the remainder into one turn.
+4. After compaction or on the next model turn, read the injected IN-FLIGHT CHECKPOINT, verify it against repository state, and continue `nextAction`. Do not answer only that context ran out and do not ask the user to repeat the prompt. If OpenCode automatically starts a post-compaction turn, continue without waiting for “continue.” If the host hard-stops without starting another model turn, durable state is preserved and execution resumes when the user or host next invokes the agent.
+5. If the checkpoint is stale, repair it from repository evidence and continue. If genuinely blocked by missing authority or user input, save the blocker and ask the smallest necessary question.
+6. Clear the checkpoint only when the in-flight task is finished, deliberately abandoned by the user, or superseded by a new execution plan. Completing or clearing the Quest also removes its checkpoint.
+
+The checkpoint is operational state, distinct from the optional `progress` note. Do not checkpoint greetings, single-step edits, status-only requests, or work unrelated to the active Quest.
 
 ### `/quest show` — display current quest
 
@@ -126,8 +143,8 @@ This is NOT a metadata display — it's a real assessment. After reading quest.j
 ### `/quest update <new-objective>` — change the objective
 
 1. Read `.opencode/quest.json`. If no file exists, say "No active quest — run `/quest <objective>` first."
-2. Replace only the `objective` field with the new text. Update `updatedAt` to current timestamp.
-3. Write back via FILE MANAGEMENT PROTOCOL.
+2. Replace the `objective` with the new text, append the prior objective to revision history, and update `updatedAt`.
+3. Clear any in-flight checkpoint because it belongs to the previous objective. Write back via FILE MANAGEMENT PROTOCOL. Create a new checkpoint when execution begins against the updated objective.
 4. Confirm: "Objective updated to: `<new-objective>`" — next response will reflect the new objective.
 
 ### `/quest complete [--force]` — audit and close the quest
@@ -180,7 +197,7 @@ If the verdict is **complete** with `--force`: flip status regardless of gaps, s
 
 ## Compaction resilience
 
-The companion plugin uses OpenCode's `experimental.session.compacting` hook to add the freshly loaded active Quest to compaction context. It also uses `experimental.chat.system.transform` to reload the file on subsequent turns. The persistent file remains the source of truth; never rely on the compaction summary or chat history as authoritative state.
+The companion plugin uses OpenCode's `experimental.session.compacting` hook to add the freshly loaded active Quest, in-flight checkpoint, and explicit resume requirements to compaction context. It uses `experimental.chat.system.transform` to reload the same durable state on subsequent turns. The plugin does not itself create a new model turn after a host-level hard stop; it guarantees that the next turn can resume without reconstructing work from chat history. The persistent file remains the source of truth.
 
 ## INSTALL INSTRUCTIONS (for the operator, not the agent)
 

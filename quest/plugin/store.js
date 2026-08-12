@@ -8,6 +8,7 @@ const ALLOWED_FIELDS = new Set([
   "originalObjective",
   "objectiveRevisions",
   "progress",
+  "checkpoint",
   "completedAt",
 ])
 
@@ -55,6 +56,41 @@ export function validateQuest(value) {
   }
   if (value.progress !== undefined && typeof value.progress !== "string") {
     throw new QuestValidationError("progress must be a string")
+  }
+  if (value.checkpoint !== undefined) {
+    const checkpoint = value.checkpoint
+    if (!checkpoint || typeof checkpoint !== "object" || Array.isArray(checkpoint)) {
+      throw new QuestValidationError("checkpoint must be an object")
+    }
+    const allowedCheckpointFields = new Set([
+      "summary",
+      "completed",
+      "currentStep",
+      "remaining",
+      "blockers",
+      "verification",
+      "nextAction",
+      "updatedAt",
+    ])
+    for (const field of Object.keys(checkpoint)) {
+      if (!allowedCheckpointFields.has(field)) throw new QuestValidationError(`unknown checkpoint field ${field}`)
+    }
+    for (const field of ["summary", "currentStep", "nextAction"]) {
+      if (typeof checkpoint[field] !== "string" || checkpoint[field].trim() === "") {
+        throw new QuestValidationError(`checkpoint ${field} must contain text`)
+      }
+    }
+    for (const field of ["completed", "remaining", "blockers"]) {
+      if (!Array.isArray(checkpoint[field]) || checkpoint[field].some((item) => typeof item !== "string")) {
+        throw new QuestValidationError(`checkpoint ${field} must be an array of strings`)
+      }
+    }
+    if (checkpoint.verification !== undefined && (!Array.isArray(checkpoint.verification) || checkpoint.verification.some((item) => typeof item !== "string"))) {
+      throw new QuestValidationError("checkpoint verification must be an array of strings")
+    }
+    if (!isTimestamp(checkpoint.updatedAt)) {
+      throw new QuestValidationError("checkpoint updatedAt must be an ISO-8601 timestamp")
+    }
   }
   if (value.objectiveRevisions !== undefined) {
     if (!Array.isArray(value.objectiveRevisions)) throw new QuestValidationError("objectiveRevisions must be an array")

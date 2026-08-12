@@ -62,3 +62,45 @@ test("rejects invalid status and timestamps", async () => {
   await assert.rejects(writeQuest(root, { ...quest(), status: "paused" }), /status/)
   await assert.rejects(writeQuest(root, { ...quest(), updatedAt: "yesterday" }), /updatedAt/)
 })
+
+test("persists and validates a durable execution checkpoint", async () => {
+  const root = await project()
+  const value = {
+    ...quest(),
+    checkpoint: {
+      summary: "Implemented storage",
+      completed: ["Added schema"],
+      currentStep: "Add tests",
+      remaining: ["Add tests", "Run verification"],
+      blockers: [],
+      verification: ["npm test passed"],
+      nextAction: "Edit tests/store.test.js",
+      updatedAt: "2026-08-12T00:00:00.000Z",
+    },
+  }
+  await writeQuest(root, value)
+  assert.deepEqual((await readQuest(root)).checkpoint, value.checkpoint)
+})
+
+test("rejects incomplete or malformed checkpoints", async () => {
+  const root = await project()
+  await assert.rejects(
+    writeQuest(root, { ...quest(), checkpoint: { summary: "partial" } }),
+    /checkpoint currentStep/,
+  )
+  await assert.rejects(
+    writeQuest(root, {
+      ...quest(),
+      checkpoint: {
+        summary: "x",
+        completed: [],
+        currentStep: "y",
+        remaining: "not-an-array",
+        blockers: [],
+        nextAction: "z",
+        updatedAt: "2026-08-12T00:00:00.000Z",
+      },
+    }),
+    /checkpoint remaining/,
+  )
+})

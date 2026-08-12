@@ -24,17 +24,32 @@ export async function loadQuest(projectRoot) {
   }
 }
 
+function questStateError(error) {
+  return `QUEST STATE ERROR\n\nCould not load .opencode/quest.json: ${error.message}. The persisted Quest may still exist, but automatic continuity is unavailable until the file is repaired. Do not overwrite or discard it.`
+}
+
 export default async function questPlugin({ directory, worktree }) {
   const projectRoot = resolveProjectRoot({ worktree, directory })
 
   return {
     "experimental.chat.system.transform": async (_input, output) => {
-      const quest = await loadQuest(projectRoot)
-      if (quest) output.system.push(activeQuestContext(quest))
+      try {
+        const quest = await readQuest(projectRoot)
+        if (quest?.status === "active") output.system.push(activeQuestContext(quest))
+      } catch (error) {
+        output.system.push(questStateError(error))
+      }
     },
     "experimental.session.compacting": async (_input, output) => {
-      const quest = await loadQuest(projectRoot)
-      if (quest) output.context.push(activeQuestContext(quest))
+      try {
+        const quest = await readQuest(projectRoot)
+        if (quest?.status === "active") {
+          output.context.push(activeQuestContext(quest))
+          output.context.push("Preserve the active Quest and its in-flight checkpoint in the compaction summary. Include completed work, current step, remaining work, blockers, verification state, and the exact next action so execution can continue on the next model turn after compaction.")
+        }
+      } catch (error) {
+        output.context.push(questStateError(error))
+      }
     },
     tool: {
       quest_state: tool({
@@ -71,8 +86,9 @@ export default async function questPlugin({ directory, worktree }) {
           if (action === "update") {
             const cleanObjective = validateObjective(objective)
             const revision = { objective: current.objective, replacedAt: now }
+            const { checkpoint: _checkpoint, ...questWithoutCheckpoint } = current
             const next = {
-              ...current,
+              ...questWithoutCheckpoint,
               originalObjective: current.originalObjective ?? current.objective,
               objectiveRevisions: [...(current.objectiveRevisions ?? []), revision],
               objective: cleanObjective,
@@ -81,9 +97,46 @@ export default async function questPlugin({ directory, worktree }) {
             await writeQuest(projectRoot, next)
             return JSON.stringify(next, null, 2)
           }
-          const next = { ...current, status: "completed", updatedAt: now, completedAt: now }
+          const { checkpoint: _checkpoint, ...questWithoutCheckpoint } = current
+          const next = { ...questWithoutCheckpoint, status: "completed", updatedAt: now, completedAt: now }
           await writeQuest(projectRoot, next)
           return JSON.stringify(next, null, 2)
+        },
+      }),
+      quest_checkpoint: tool({
+        description: "Save or clear a durable in-flight Quest checkpoint so long-running work resumes after context compaction or exhaustion. Save before a long multi-step operation and after each meaningful milestone.",
+        args: {
+          action: tool.schema.enum(["save", "clear"]),
+          summary: tool.schema.string().optional(),
+          completed: tool.schema.array(tool.schema.string()).optional(),
+          currentStep: tool.schema.string().optional(),
+          remaining: tool.schema.array(tool.schema.string()).optional(),
+          blockers: tool.schema.array(tool.schema.string()).optional(),
+          verification: tool.schema.array(tool.schema.string()).optional(),
+          nextAction: tool.schema.string().optional(),
+        },
+        async execute({ action, summary, completed, currentStep, remaining, blockers, verification, nextAction }) {
+          const current = await readQuest(projectRoot)
+          if (!current || current.status !== "active") throw new Error("No active Quest exists; create one first.")
+          const now = new Date().toISOString()
+          if (action === "clear") {
+            const { checkpoint: _checkpoint, ...next } = current
+            await writeQuest(projectRoot, { ...next, updatedAt: now })
+            return "Quest checkpoint cleared."
+          }
+          const checkpoint = {
+            summary,
+            completed: completed ?? [],
+            currentStep,
+            remaining: remaining ?? [],
+            blockers: blockers ?? [],
+            verification: verification ?? [],
+            nextAction,
+            updatedAt: now,
+          }
+          const next = { ...current, checkpoint, updatedAt: now }
+          await writeQuest(projectRoot, next)
+          return JSON.stringify(checkpoint, null, 2)
         },
       }),
     },

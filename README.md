@@ -12,6 +12,7 @@ Quest tracks one active objective per project in a `.opencode/quest.json` file. 
 
 - **Stay focused** — inject the quest objective into every response as an ACTIVE QUEST block, reminding the agent of the higher-level goal alongside the immediate task
 - **Persist across compaction** — quest state lives on disk, not in chat history; survives token-limited conversations, compaction events, and session boundaries
+- **Resume interrupted work** — durable checkpoints preserve completed steps, the current step, remaining work, blockers, and the exact next action when a turn runs out of context
 - **Evaluate progress honestly** — `/quest status` gives a real assessment of whether work satisfies the objective, not just a metadata dump
 - **Audit before closing** — `/quest complete` runs an actual completion audit against repo state before flipping status
 
@@ -174,6 +175,8 @@ The plugin uses two supported OpenCode hooks:
 
 Both hooks load `.opencode/quest.json` afresh. The on-disk file remains authoritative after compaction and restart.
 
+Before long multi-step work, the agent saves an in-flight checkpoint and refreshes it at meaningful milestones. After compaction or context exhaustion, the next model turn receives both the objective and checkpoint with instructions to verify repository state and continue rather than asking the user to repeat the prompt. If OpenCode hard-stops without scheduling another model turn, the plugin cannot initiate one itself; it preserves enough state to resume when the host or user next invokes the agent.
+
 ### Single active quest
 
 The skill tracks exactly one quest at a time. If you want to work on something else, `/quest clear` the current one first or use `/quest update` to change focus. This prevents context dilution from multiple simultaneous objectives.
@@ -184,9 +187,9 @@ Updates preserve the Quest ID, immutable original objective, and compact revisio
 
 `/quest complete` never immediately marks a quest done — it runs a real audit examining repo state, changed files, and evidence of completion. Only the `--force` flag overrides this check.
 
-### No implicit progress writes
+### Operational checkpoints, not generated progress
 
-Ordinary work does not rewrite Quest state. `/quest status` computes a fresh assessment from repository and session evidence without saving generated notes, avoiding subjective background mutations and permission prompts. A pre-existing `progress` field is displayed but treated as advisory.
+Ordinary short tasks and `/quest status` do not save generated progress notes. Long-running execution does write compact operational checkpoints at safe boundaries so work can resume after context exhaustion. A checkpoint is a handoff—not a claim of completion—and repository evidence remains authoritative.
 
 ## Architecture Notes (for developers contributing to this skill)
 
