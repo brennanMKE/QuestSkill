@@ -1,5 +1,7 @@
 # QuestSkill — persistent objective tracking
 
+![QuestSkill](Quest.png)
+
 An OpenCode plugin with a companion agent skill that keeps a single high-level quest alive across agent turns, sessions, compaction, and restarts.
 
 **GitHub:** [brennanMKE/QuestSkill](https://github.com/brennanMKE/QuestSkill)
