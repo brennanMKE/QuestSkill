@@ -1,15 +1,12 @@
-import { readFile } from "node:fs/promises"
-import { join } from "node:path"
+import { randomUUID } from "node:crypto"
+import { tool } from "@opencode-ai/plugin"
+import { clearQuest, questPath, readQuest, writeQuest } from "./store.js"
 
 const ACTIVE_QUEST_PREFIX = "ACTIVE QUEST"
 
-export function questPath(projectRoot) {
-  return join(projectRoot, ".opencode", "quest.json")
-}
-
 export async function loadQuest(projectRoot) {
   try {
-    const value = JSON.parse(await readFile(questPath(projectRoot), "utf8"))
+    const value = await readQuest(projectRoot)
     if (
       typeof value === "object" &&
       value !== null &&
@@ -42,6 +39,40 @@ export default async function questPlugin({ directory, worktree }) {
     "experimental.session.compacting": async (_input, output) => {
       const quest = await loadQuest(projectRoot)
       if (quest) output.context.push(activeQuestContext(quest))
+    },
+    tool: {
+      quest_state: tool({
+        description: "Read or atomically mutate the current project's persistent Quest. Run the quest skill's audit before action=complete.",
+        args: {
+          action: tool.schema.enum(["show", "create", "update", "complete", "clear"]),
+          objective: tool.schema.string().optional(),
+        },
+        async execute({ action, objective }) {
+          const current = await readQuest(projectRoot)
+          if (action === "show") return JSON.stringify(current ?? null, null, 2)
+          if (action === "clear") {
+            await clearQuest(projectRoot)
+            return "Quest cleared."
+          }
+
+          const now = new Date().toISOString()
+          if (action === "create") {
+            if (current?.status === "active") throw new Error("An active Quest already exists; update or clear it first.")
+            const next = { id: randomUUID(), objective, status: "active", createdAt: now, updatedAt: now }
+            await writeQuest(projectRoot, next)
+            return JSON.stringify(next, null, 2)
+          }
+          if (!current) throw new Error("No Quest exists; create one first.")
+          if (action === "update") {
+            const next = { ...current, objective, updatedAt: now }
+            await writeQuest(projectRoot, next)
+            return JSON.stringify(next, null, 2)
+          }
+          const next = { ...current, status: "completed", updatedAt: now, completedAt: now }
+          await writeQuest(projectRoot, next)
+          return JSON.stringify(next, null, 2)
+        },
+      }),
     },
   }
 }

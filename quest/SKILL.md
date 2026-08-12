@@ -44,7 +44,7 @@ The project root is the current working directory or git worktree. If `.opencode
 This is the foundation of everything. The agent must follow this strictly — no exceptions, no shortcuts.
 
 1. **Always re-read before mutate.** Never cache quest state in session memory across turns without a corresponding file read. Before every action (show, update, complete, clear), the agent MUST `Read` the file to get current state.
-2. **Atomic write.** Read → validate → mutate → write back the entire file. Never overwrite with empty or partial data.
+2. **Atomic write.** Use the plugin's `quest_state` tool for mutations. It writes a sibling temporary file, flushes it, and atomically renames it over `quest.json`. Never implement a direct truncate-and-write replacement in shell commands.
 3. **Validate on read.** After reading, check that the file contains valid JSON with at least `id`, `objective`, and `status` fields. If parsing fails, emit a clear error: "Could not parse `.opencode/quest.json` — contents appear corrupted. What would you like to do?" Don't silently discard or overwrite.
 4. **Check directory existence first.** If `.opencode/` doesn't exist, create it before writing quest.json. Use mkdir -p if supported, or the File tool's parent directory handling.
 5. **No quest state in history.** Quest context lives exclusively in the file on disk, not in chat messages. The ACTIVE QUEST block is injected fresh each turn from the file contents.
