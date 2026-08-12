@@ -83,6 +83,16 @@ find "$SRC_ROOT" -maxdepth 2 -name SKILL.md -not -path '*/.git/*' -print \
       fi
     done
 
+# OpenCode plugins must live in its plugin directory to run on every turn.
+QUEST_PLUGIN="$SRC_ROOT/quest/plugin/quest.js"
+if [ -f "$QUEST_PLUGIN" ] && { have opencode || [ -d "$OPENCODE_DIR" ]; }; then
+  mkdir -p "$OPENCODE_DIR/plugins"
+  plugin_dest="$OPENCODE_DIR/plugins/quest.js"
+  if [ -e "$plugin_dest" ] || [ -L "$plugin_dest" ]; then rm -rf "$plugin_dest"; fi
+  ln -s "$QUEST_PLUGIN" "$plugin_dest"
+  echo "  linked $plugin_dest -> $QUEST_PLUGIN"
+fi
+
 echo ""
 
 if [ -z "$GLOBAL_TARGETS" ] && [ -z "$PROJECT_DIR" ]; then

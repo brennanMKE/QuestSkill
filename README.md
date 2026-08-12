@@ -1,6 +1,6 @@
 # QuestSkill — persistent objective tracking
 
-A skill for OpenCode and Claude Code that keeps a single high-level quest alive across agent turns, sessions, compaction, and restarts. The quest objective is the source of truth — injected into every relevant response so the agent never loses track of what you're ultimately trying to accomplish.
+An OpenCode plugin with a companion agent skill that keeps a single high-level quest alive across agent turns, sessions, compaction, and restarts.
 
 **GitHub:** [brennanMKE/QuestSkill](https://github.com/brennanMKE/QuestSkill)
 
@@ -87,7 +87,7 @@ Build a persistent objective tracking system that survives compaction
 Treat this as the persistent high-level objective for the current project. The user's current message is the immediate task, but decisions should remain consistent with this Quest unless the user explicitly changes or clears it.
 ```
 
-This block appears at the top of every response — the agent re-reads `.opencode/quest.json` on each turn, so after compaction or restart the objective is restored from disk.
+The plugin re-reads `.opencode/quest.json` on each model turn and adds this block to effective system context. It does not depend on the model remembering to load the skill.
 
 ## Commands
 

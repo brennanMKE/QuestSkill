@@ -5,9 +5,7 @@ description: Persistent objective tracking across agent turns and session bounda
 
 # QuestSkill — persistent objective tracking
 
-A lightweight, project-local quest tracker stored as `.opencode/quest.json`. The agent reads this file each turn and uses it to maintain awareness of the user's high-level goal, inject context into responses, and evaluate whether work satisfies the stated objective.
-
-No TypeScript plugin is required — quest state is managed by agent instructions following strict file I/O protocols. The persistent JSON file is the source of truth and survives compaction, restarts, and new sessions.
+A project-local quest tracker stored as `.opencode/quest.json`. The companion OpenCode plugin re-reads this file and injects an active objective into system context on every model turn. Use this skill for command semantics and repository-aware status and completion audits.
 
 ## State file location
 
@@ -53,7 +51,7 @@ This is the foundation of everything. The agent must follow this strictly — no
 
 ## Active quest context injection (MOST IMPORTANT)
 
-When a quest is active (`status === "active"`), the agent MUST prepend an ACTIVE QUEST block to every response that is related to project work. This block goes at the top of the agent's text output, before any task-specific response content.
+The OpenCode plugin injects an ACTIVE QUEST block into effective system context whenever `status === "active"`. Treat that block as persistent context; do not duplicate it in visible response text unless the user asks to see the Quest.
 
 The block format is literal — copy exactly:
 
