@@ -70,7 +70,7 @@ Removing a symlink leaves the source repo untouched.
 
 ## How It Works
 
-The skill loads automatically when:
+The `/quest` command is registered with OpenCode's command loader. It loads the companion skill when:
 - The user invokes a `/quest` command (show, status, update, complete, clear)
 - The user asks about quest state in plain language ("What are we trying to accomplish?", "Show me our goal")
 - The agent detects that an active quest exists and the user's request is project-related
@@ -176,7 +176,8 @@ The skill tracks exactly one quest at a time. If you want to work on something e
 - **Implementation artifact:** `quest/SKILL.md` — all behavior is encoded as agent instructions in a single markdown file.
 - **State file:** `<projectRoot>/.opencode/quest.json` — project-local, gitignored.
 - **Discovery:** OpenCode discovers this skill via its name (`quest`) and description in the frontmatter, matching skills loaded by `~/.config/opencode/skills/quest/`.
-- **No TypeScript:** this skill does not use the OpenCode plugin API (no `.opencode/plugins/` module, no `tui.json` registration). All commands and context injection are agent instructions.
+- **Command registration:** `quest/command/quest.md` registers `/quest` and forwards its complete argument string to the skill instructions.
+- **Plugin:** `quest/plugin/quest.js` provides lifecycle hooks for reliable context injection.
 - **File I/O protocol:** the FILE MANAGEMENT PROTOCOL section in SKILL.md defines how the agent must read/write quest.json — atomic, validated on read, no caching across turns.
 
 ## License

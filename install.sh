@@ -93,6 +93,16 @@ if [ -f "$QUEST_PLUGIN" ] && { have opencode || [ -d "$OPENCODE_DIR" ]; }; then
   echo "  linked $plugin_dest -> $QUEST_PLUGIN"
 fi
 
+# Register /quest with OpenCode's command loader.
+QUEST_COMMAND="$SRC_ROOT/quest/command/quest.md"
+if [ -f "$QUEST_COMMAND" ] && { have opencode || [ -d "$OPENCODE_DIR" ]; }; then
+  mkdir -p "$OPENCODE_DIR/commands"
+  command_dest="$OPENCODE_DIR/commands/quest.md"
+  if [ -e "$command_dest" ] || [ -L "$command_dest" ]; then rm -rf "$command_dest"; fi
+  ln -s "$QUEST_COMMAND" "$command_dest"
+  echo "  linked $command_dest -> $QUEST_COMMAND"
+fi
+
 echo ""
 
 if [ -z "$GLOBAL_TARGETS" ] && [ -z "$PROJECT_DIR" ]; then
