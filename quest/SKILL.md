@@ -93,6 +93,7 @@ When the user invokes this pattern:
 2. If no file exists, or status is `"completed"`: create a new quest object with the given objective text. Generate a UUID for `id`. Set `status: "active"`, fill `createdAt` and `updatedAt` with current ISO-8601 timestamp.
 3. Write the new quest object to `.opencode/quest.json` using the FILE MANAGEMENT PROTOCOL above.
 4. Confirm with the user: "Quest created: `<objective>`" — no verbose metadata, just confirmation that the objective is active.
+5. If `.opencode/quest.json` is not already ignored or intentionally tracked, mention once that `/.opencode/quest.json` can be added to the consuming repository's `.gitignore`. Do not edit ignore rules without permission.
 
 ### `/quest show` — display current quest
 

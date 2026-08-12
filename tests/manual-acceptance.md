@@ -12,5 +12,6 @@ Run these checks against a temporary Git project after `./install.sh -y` and an 
 - Clear: `/quest clear` removes the state file and subsequent context injection.
 - Corruption: invalid JSON produces an actionable error without overwriting the file.
 - Write failure: read-only `.opencode` state produces an actionable error.
+- Git policy: the consuming repository either ignores `/.opencode/quest.json` or intentionally tracks it; installation does not silently change that choice.
 
 Do not describe a release as acceptance-tested until every row has a recorded passing result.

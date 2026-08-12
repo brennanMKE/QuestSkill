@@ -6,7 +6,7 @@ An OpenCode plugin with a companion agent skill that keeps a single high-level q
 
 ## What This Skill Does
 
-Quest tracks one active objective per project in a `.opencode/quest.json` file. The agent reads it each turn and uses it to:
+Quest tracks one active objective per project in a `.opencode/quest.json` file. This file is local state by convention, but consuming repositories must ignore it explicitly if they do not want it committed. The plugin uses it to:
 
 - **Stay focused** — inject the quest objective into every response as an ACTIVE QUEST block, reminding the agent of the higher-level goal alongside the immediate task
 - **Persist across compaction** — quest state lives on disk, not in chat history; survives token-limited conversations, compaction events, and session boundaries
@@ -155,6 +155,14 @@ No active quest — no more ACTIVE QUEST blocks will appear.
 
 Quest state lives in `.opencode/quest.json` (project-local). This file is always the source of truth — even after compaction, restarts, or token-limited sessions. The agent never relies on chat history for quest existence.
 
+To keep it out of a consuming repository, add this exact entry to that repository's `.gitignore`:
+
+```gitignore
+/.opencode/quest.json
+```
+
+The installer does not modify project ignore rules automatically. Teams may instead commit Quest state deliberately when a shared objective is desired.
+
 ### Compaction resilience
 
 The plugin uses two supported OpenCode hooks:
@@ -175,7 +183,7 @@ The skill tracks exactly one quest at a time. If you want to work on something e
 ## Architecture Notes (for developers contributing to this skill)
 
 - **Implementation artifact:** `quest/SKILL.md` — all behavior is encoded as agent instructions in a single markdown file.
-- **State file:** `<projectRoot>/.opencode/quest.json` — project-local, gitignored.
+- **State file:** `<projectRoot>/.opencode/quest.json` — project-local and ignored only when the consuming repository configures that rule.
 - **Project root:** OpenCode's worktree root, falling back to its project directory for non-Git workspaces. Nested shell working directories do not create separate Quests.
 - **Discovery:** OpenCode discovers this skill via its name (`quest`) and description in the frontmatter, matching skills loaded by `~/.config/opencode/skills/quest/`.
 - **Command registration:** `quest/command/quest.md` registers `/quest` and forwards its complete argument string to the skill instructions.
