@@ -104,7 +104,7 @@ export default async function questPlugin({ directory, worktree }) {
         },
       }),
       quest_checkpoint: tool({
-        description: "Save or clear a durable in-flight Quest checkpoint so long-running work resumes after context compaction or exhaustion. Save before a long multi-step operation and after each meaningful milestone.",
+        description: "Save or clear a durable in-flight Quest checkpoint so long-running work resumes after compaction, context exhaustion, failed verification, or a wrong edit. Save before broad/structural edits and after each milestone or failure; include the current diagnostic and exact safe recovery action.",
         args: {
           action: tool.schema.enum(["save", "clear"]),
           summary: tool.schema.string().optional(),

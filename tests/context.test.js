@@ -3,7 +3,7 @@ import test from "node:test"
 
 import { activeQuestContext } from "../quest/plugin/context.js"
 
-test("context contains only the objective and constraint", () => {
+test("active context contains the objective and baseline recovery contract", () => {
   const context = activeQuestContext({
     id: "hidden",
     objective: "Preserve behavior",
@@ -12,6 +12,9 @@ test("context contains only the objective and constraint", () => {
     originalObjective: "also hidden",
   })
   assert.match(context, /^ACTIVE QUEST\n\nPreserve behavior\n\nTreat this as/)
+  assert.match(context, /QUEST EXECUTION CONTRACT/)
+  assert.match(context, /verify the exact target path before editing/)
+  assert.match(context, /create an in-flight checkpoint/)
   assert.doesNotMatch(context, /hidden/)
 })
 
@@ -35,5 +38,8 @@ test("context includes a compact in-flight resume checkpoint", () => {
   assert.match(context, /Next action: Open src\/service\.js/)
   assert.match(context, /Verification: Unit tests passed/)
   assert.match(context, /Resume from this checkpoint without asking the user/)
+  assert.match(context, /QUEST EXECUTION CONTRACT/)
+  assert.match(context, /compile\/test failure.*is not by itself a blocker/)
+  assert.match(context, /Never replace an existing source file wholesale/)
   assert.doesNotMatch(context, /2026-08-12/)
 })

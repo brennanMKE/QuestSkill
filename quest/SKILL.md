@@ -111,7 +111,7 @@ Do not write generated progress notes after ordinary project turns. The v1 comma
 
 Treat a context limit as a recoverable continuation boundary, not a reason to stop the Quest or return control to the user.
 
-1. Before beginning a long multi-step implementation, call `quest_checkpoint` with `action: "save"`. Record the planned steps in `remaining`, the first `currentStep`, and an executable `nextAction`.
+1. Before beginning a long multi-step implementation or any broad/structural edit, call `quest_checkpoint` with `action: "save"`. Record the planned steps in `remaining`, the first `currentStep`, and an executable `nextAction`.
 2. After every meaningful milestone, test run, commit, failure, or change of approach, save a fresh checkpoint. Keep it concise and factual; repository state remains authoritative.
 3. When context is getting tight, checkpoint before reading another large file, running a broad investigation, or starting another implementation phase. Prefer a safe persisted boundary over trying to squeeze the remainder into one turn.
 4. After compaction or on the next model turn, read the injected IN-FLIGHT CHECKPOINT, verify it against repository state, and continue `nextAction`. Do not answer only that context ran out and do not ask the user to repeat the prompt. If OpenCode automatically starts a post-compaction turn, continue without waiting for “continue.” If the host hard-stops without starting another model turn, durable state is preserved and execution resumes when the user or host next invokes the agent.
@@ -119,6 +119,31 @@ Treat a context limit as a recoverable continuation boundary, not a reason to st
 6. Clear the checkpoint only when the in-flight task is finished, deliberately abandoned by the user, or superseded by a new execution plan. Completing or clearing the Quest also removes its checkpoint.
 
 The checkpoint is operational state, distinct from the optional `progress` note. Do not checkpoint greetings, single-step edits, status-only requests, or work unrelated to the active Quest.
+
+## Execution persistence and safe recovery
+
+Once work on the active Quest has begun and a checkpoint exists, treat the current task as persistent. Keep taking safe, relevant actions until it is complete or a genuine blocker requires user input or new authority.
+
+Before editing, resolve and verify the exact target path using repository search or file listing; do not rely on memory of which target or directory owns a symbol. The plugin injects this baseline safety rule for every active Quest, even if the agent has not yet created the required checkpoint.
+
+Never treat these as terminal blockers by themselves:
+
+- a compile, lint, or test failure
+- an unfamiliar file or missing remembered detail
+- a failed edit or an error that changed after an edit
+- context pressure or compaction
+- uncertainty that can be resolved by inspecting repository state, history, or current diagnostics
+
+When an edit or verification fails:
+
+1. Stop making speculative edits. Save a checkpoint containing the exact current error and recovery action.
+2. Re-read the current file and `git diff`; diagnose the first error produced by the current working-tree state. Do not chase output from an earlier state.
+3. Preserve recoverability. Before a broad or structural edit, inspect the full target and retain a known-good source from the current file, Git history, or a temporary backup. Never overwrite an existing non-generated source file wholesale with `cat >`, a heredoc, or a partial reconstruction.
+4. Make the smallest reversible edit that tests one diagnosis. Re-run the narrowest useful check. Update the checkpoint after each attempt.
+5. If an edit makes the state worse, undo only that edit using the saved content or a precise reverse patch. Do not discard unrelated user changes and do not use destructive Git commands.
+6. Continue through ordinary failures. Stop only when required user information/authority is unavailable, an external dependency cannot be reached after reasonable retries, or every safe recovery source is exhausted. Save the blocker, evidence, and exact resume action before asking the user.
+
+A failure report is supporting evidence, not task completion. Do not end with a report while a safe repository inspection, recovery, implementation, or verification action remains.
 
 ### `/quest show` — display current quest
 

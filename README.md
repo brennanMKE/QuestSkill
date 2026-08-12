@@ -13,6 +13,7 @@ Quest tracks one active objective per project in a `.opencode/quest.json` file. 
 - **Stay focused** — inject the quest objective into every response as an ACTIVE QUEST block, reminding the agent of the higher-level goal alongside the immediate task
 - **Persist across compaction** — quest state lives on disk, not in chat history; survives token-limited conversations, compaction events, and session boundaries
 - **Resume interrupted work** — durable checkpoints preserve completed steps, the current step, remaining work, blockers, and the exact next action when a turn runs out of context
+- **Recover instead of stopping** — compile failures and wrong edits trigger a safe recovery loop based on the current diff and diagnostics rather than ending the Quest with a failure report
 - **Evaluate progress honestly** — `/quest status` gives a real assessment of whether work satisfies the objective, not just a metadata dump
 - **Audit before closing** — `/quest complete` runs an actual completion audit against repo state before flipping status
 
@@ -190,6 +191,10 @@ Updates preserve the Quest ID, immutable original objective, and compact revisio
 ### Operational checkpoints, not generated progress
 
 Ordinary short tasks and `/quest status` do not save generated progress notes. Long-running execution does write compact operational checkpoints at safe boundaries so work can resume after context exhaustion. A checkpoint is a handoff—not a claim of completion—and repository evidence remains authoritative.
+
+### Failures are recovery events
+
+Once checkpointed Quest work is underway, ordinary implementation failures are not terminal. The injected execution contract requires the agent to stop speculative editing, inspect the current file and diff, diagnose the current first error, use small reversible changes, and continue verification. It specifically forbids replacing an existing source file wholesale as an escape from a local structural error. The agent stops only for a genuine user/authority/external blocker after recording an exact resume action.
 
 ## Architecture Notes (for developers contributing to this skill)
 
