@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { tool } from "@opencode-ai/plugin"
+import { activeQuestContext } from "./context.js"
 import { clearQuest, questPath, readQuest, writeQuest } from "./store.js"
-
-const ACTIVE_QUEST_PREFIX = "ACTIVE QUEST"
 
 export async function loadQuest(projectRoot) {
   try {
@@ -22,10 +21,6 @@ export async function loadQuest(projectRoot) {
     // Command handling reports detailed, actionable storage errors.
     return undefined
   }
-}
-
-export function activeQuestContext(quest) {
-  return `${ACTIVE_QUEST_PREFIX}\n\n${quest.objective}\n\nTreat this as the persistent high-level objective for the current project. The user's current message is the immediate task, but decisions should remain consistent with this Quest unless the user explicitly changes or clears it.`
 }
 
 export default async function questPlugin({ directory, worktree }) {

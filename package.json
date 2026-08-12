@@ -1,0 +1,9 @@
+{
+  "name": "opencode-quest",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check quest/plugin/quest.js && node --test"
+  }
+}

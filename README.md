@@ -181,6 +181,10 @@ The skill tracks exactly one quest at a time. If you want to work on something e
 - **Plugin:** `quest/plugin/quest.js` provides lifecycle hooks for reliable context injection.
 - **File I/O protocol:** the FILE MANAGEMENT PROTOCOL section in SKILL.md defines how the agent must read/write quest.json — atomic, validated on read, no caching across turns.
 
+## Verification
+
+Run `npm test` for storage and context tests. Before release, run the OpenCode workflow in `tests/manual-acceptance.md`. Automated tests do not by themselves prove TUI restart or compaction behavior.
+
 ## License
 
 This skill and its guidance are provided as-is for personal and educational use.
