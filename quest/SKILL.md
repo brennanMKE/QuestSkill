@@ -49,7 +49,7 @@ This is the foundation of everything. The agent must follow this strictly — no
 
 1. **Always re-read before mutate.** Never cache quest state in session memory across turns without a corresponding file read. Before every action (show, update, complete, clear), the agent MUST `Read` the file to get current state.
 2. **Atomic write.** Use the plugin's `quest_state` tool for mutations. It writes a sibling temporary file, flushes it, and atomically renames it over `quest.json`. Never implement a direct truncate-and-write replacement in shell commands.
-3. **Validate on read.** After reading, check that the file contains valid JSON with at least `id`, `objective`, and `status` fields. If parsing fails, emit a clear error: "Could not parse `.opencode/quest.json` — contents appear corrupted. What would you like to do?" Don't silently discard or overwrite.
+3. **Validate on read.** The state tool enforces the documented fields, non-empty objectives, allowed statuses, timestamps, revision shape, and rejects unknown fields. Relay its actionable error and do not discard or overwrite invalid state.
 4. **Check directory existence first.** If `.opencode/` doesn't exist, create it before writing quest.json. Use mkdir -p if supported, or the File tool's parent directory handling.
 5. **No quest state in history.** Quest context lives exclusively in the file on disk, not in chat messages. The ACTIVE QUEST block is injected fresh each turn from the file contents.
 
@@ -89,6 +89,8 @@ Always re-read `.opencode/quest.json` at the top of your response processing —
 ## /quest commands
 
 The agent MUST recognize and handle these exact `/quest` command patterns. If the user writes `/quest` without a recognized subcommand, show them the help text (shown in Phase 2 step below).
+
+Reject empty or whitespace-only objectives for create and update. If persistence fails, report the filesystem error and leave the prior Quest unchanged; never claim success before the state tool returns successfully.
 
 ### `/quest <objective>` — create or set a quest
 
