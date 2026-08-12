@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { tool } from "@opencode-ai/plugin"
 import { activeQuestContext } from "./context.js"
+import { resolveProjectRoot } from "./project-root.js"
 import { clearQuest, questPath, readQuest, writeQuest } from "./store.js"
 
 export async function loadQuest(projectRoot) {
@@ -24,7 +25,7 @@ export async function loadQuest(projectRoot) {
 }
 
 export default async function questPlugin({ directory, worktree }) {
-  const projectRoot = worktree || directory
+  const projectRoot = resolveProjectRoot({ worktree, directory })
 
   return {
     "experimental.chat.system.transform": async (_input, output) => {

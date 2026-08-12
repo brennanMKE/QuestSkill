@@ -176,6 +176,7 @@ The skill tracks exactly one quest at a time. If you want to work on something e
 
 - **Implementation artifact:** `quest/SKILL.md` — all behavior is encoded as agent instructions in a single markdown file.
 - **State file:** `<projectRoot>/.opencode/quest.json` — project-local, gitignored.
+- **Project root:** OpenCode's worktree root, falling back to its project directory for non-Git workspaces. Nested shell working directories do not create separate Quests.
 - **Discovery:** OpenCode discovers this skill via its name (`quest`) and description in the frontmatter, matching skills loaded by `~/.config/opencode/skills/quest/`.
 - **Command registration:** `quest/command/quest.md` registers `/quest` and forwards its complete argument string to the skill instructions.
 - **Plugin:** `quest/plugin/quest.js` provides lifecycle hooks for reliable context injection.

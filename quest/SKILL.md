@@ -13,7 +13,7 @@ A project-local quest tracker stored as `.opencode/quest.json`. The companion Op
 <projectRoot>/.opencode/quest.json
 ```
 
-The project root is the current working directory or git worktree. If `.opencode/` doesn't exist, create it (directory + parent if needed) before writing the file.
+The plugin deterministically uses OpenCode's `worktree` as the project root. Outside a Git worktree, it falls back to OpenCode's `directory`. Do not substitute a shell tool's incidental working directory. If `.opencode/` doesn't exist, the state tool creates it before writing.
 
 ## Quest model
 
