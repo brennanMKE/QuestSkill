@@ -1,0 +1,184 @@
+# QuestSkill — persistent objective tracking
+
+A skill for OpenCode and Claude Code that keeps a single high-level quest alive across agent turns, sessions, compaction, and restarts. The quest objective is the source of truth — injected into every relevant response so the agent never loses track of what you're ultimately trying to accomplish.
+
+**GitHub:** [brennanMKE/QuestSkill](https://github.com/brennanMKE/QuestSkill)
+
+## What This Skill Does
+
+Quest tracks one active objective per project in a `.opencode/quest.json` file. The agent reads it each turn and uses it to:
+
+- **Stay focused** — inject the quest objective into every response as an ACTIVE QUEST block, reminding the agent of the higher-level goal alongside the immediate task
+- **Persist across compaction** — quest state lives on disk, not in chat history; survives token-limited conversations, compaction events, and session boundaries
+- **Evaluate progress honestly** — `/quest status` gives a real assessment of whether work satisfies the objective, not just a metadata dump
+- **Audit before closing** — `/quest complete` runs an actual completion audit against repo state before flipping status
+
+## Who This Is For
+
+- **Anyone using OpenCode or Claude Code for multi-turn projects** — agents naturally drift; this skill keeps them aligned
+- **Projects with a clear, singular goal** — not for scattered experimentation or brainstorming; one quest at a time
+- **Users who want the agent to remember what it's working toward** — even after 200+ turns or a restart
+
+## Installation
+
+### Quick install (recommended) — `npx skills`
+
+```bash
+npx skills add brennanMKE/QuestSkill --skill quest
+```
+
+### Manual install — `install.sh`
+
+Clone the repo and run the installer. It symlinks the skill into the global skills dirs of every detected tool:
+
+```bash
+git clone https://github.com/brennanMKE/QuestSkill.git
+cd QuestSkill
+./install.sh
+```
+
+Cursor has no global skills directory, so install per project:
+
+```bash
+./install.sh --project /path/to/your/project   # links into <project>/.cursor/skills
+```
+
+Install straight from git without a manual clone (caches and updates on re-run):
+
+```bash
+REPO_URL=https://github.com/brennanMKE/QuestSkill.git ./install.sh
+```
+
+Because `install.sh` uses symlinks, edits to the skill files are picked up without reinstalling.
+
+### Where skills live
+
+| Tool        | Global                           | Project             |
+|-------------|----------------------------------|---------------------|
+| Claude Code | `~/.claude/skills/`              | `.claude/skills/`   |
+| OpenCode    | `~/.config/opencode/skills/`     | (via SKILL.md load) |
+| Cursor      | *(project only)*                 | `.cursor/skills/`   |
+
+## Removal
+
+```bash
+rm ~/.claude/skills/quest
+rm ~/.config/opencode/skills/quest
+```
+
+Removing a symlink leaves the source repo untouched.
+
+## How It Works
+
+The skill loads automatically when:
+- The user invokes a `/quest` command (show, status, update, complete, clear)
+- The user asks about quest state in plain language ("What are we trying to accomplish?", "Show me our goal")
+- The agent detects that an active quest exists and the user's request is project-related
+
+### What You Get
+
+When a quest is active, the agent prepends an ACTIVE QUEST block to every relevant response:
+
+```
+ACTIVE QUEST
+
+Build a persistent objective tracking system that survives compaction
+
+Treat this as the persistent high-level objective for the current project. The user's current message is the immediate task, but decisions should remain consistent with this Quest unless the user explicitly changes or clears it.
+```
+
+This block appears at the top of every response — the agent re-reads `.opencode/quest.json` on each turn, so after compaction or restart the objective is restored from disk.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/quest <objective>` | Create or set the active quest objective. If one already exists, asks whether to replace or clear it first. |
+| `/quest show` | Display the current quest: objective, status, timestamps, progress note. |
+| `/quest status` | Real assessment of progress — what's done, what remains, blockers. Not a metadata dump. |
+| `/quest update <objective>` | Change the quest objective text. New text injected into context on next response. |
+| `/quest complete [--force]` | Run a completion audit against repo state. Flips status only when evidence supports it. `--force` overrides. |
+| `/quest clear` | Delete the active quest file. Subsequent responses no longer inject the ACTIVE QUEST block. |
+
+## Example Workflow
+
+```
+> /quest Implement a file watcher that debounces events and writes to a log
+
+ACTIVE QUEST
+
+Implement a file watcher that debounces events and writes to a log
+
+Treat this as the persistent high-level objective for the current project. The user's current message is the immediate task, but decisions should remain consistent with this Quest unless the user explicitly changes or clears it.
+
+... [agent works on implementation] ...
+
+> /quest status
+
+Based on git status, these files were modified:
+  - src/watcher.ts (debounce logic implemented)
+  - src/logger.ts (log writing added)
+
+What's done: debounce + log writing.
+Remaining: the spec said "debounce events" — but I don't see any event-sourcing or debouncing threshold.
+Verdict: not complete yet.
+
+> /quest update Add a configurable debounce threshold parameter (default 300ms)
+
+Objective updated to: Add a configurable debounce threshold parameter (default 300ms)
+Next response will reflect the new objective.
+
+... [continues work] ...
+
+> /quest complete
+
+### Audit
+- What was asked: Add a configurable debounce threshold parameter (default 300ms)
+- Evidence: src/watcher.ts updated with THRESHOLD_MS constant, configurable via function argument
+- Gaps: None found
+- Verdict: complete
+
+Quest marked as completed.
+
+> /quest show
+
+Status: completed
+Objective: Add a configurable debounce threshold parameter (default 300ms)
+Completed at: 2026-08-11T...
+
+No active quest — no more ACTIVE QUEST blocks will appear.
+```
+
+## Design Decisions
+
+### Persistent file, not chat history
+
+Quest state lives in `.opencode/quest.json` (project-local). This file is always the source of truth — even after compaction, restarts, or token-limited sessions. The agent never relies on chat history for quest existence.
+
+### Compaction resilience — skill-level instructions (Option A)
+
+The current OpenCode agent API does not expose a `session.compacting` plugin hook that agents can use. Therefore compaction resilience is achieved purely through skill-level instructions:
+
+1. The persistent file remains intact on disk across compaction (it's a regular `.json` file).
+2. The agent re-reads the file at the top of every response (per FILE MANAGEMENT PROTOCOL), guaranteeing quest re-discovery after compaction.
+3. No TypeScript plugin is needed — skill instructions encode the file-read protocol directly into agent behavior.
+
+### Single active quest
+
+The skill tracks exactly one quest at a time. If you want to work on something else, `/quest clear` the current one first or use `/quest update` to change focus. This prevents context dilution from multiple simultaneous objectives.
+
+### Audit, not agreement
+
+`/quest complete` never immediately marks a quest done — it runs a real audit examining repo state, changed files, and evidence of completion. Only the `--force` flag overrides this check.
+
+## Architecture Notes (for developers contributing to this skill)
+
+- **Implementation artifact:** `quest/SKILL.md` — all behavior is encoded as agent instructions in a single markdown file.
+- **State file:** `<projectRoot>/.opencode/quest.json` — project-local, gitignored.
+- **Discovery:** OpenCode discovers this skill via its name (`quest`) and description in the frontmatter, matching skills loaded by `~/.config/opencode/skills/quest/`.
+- **No TypeScript:** this skill does not use the OpenCode plugin API (no `.opencode/plugins/` module, no `tui.json` registration). All commands and context injection are agent instructions.
+- **File I/O protocol:** the FILE MANAGEMENT PROTOCOL section in SKILL.md defines how the agent must read/write quest.json — atomic, validated on read, no caching across turns.
+
+## License
+
+This skill and its guidance are provided as-is for personal and educational use.

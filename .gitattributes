@@ -1,0 +1,6 @@
+# Normalize line endings for text files across platforms.
+# CRLF → LF on checkout, keeps all tracked text consistent (git config core.autocrlf not needed).
+
+* text=auto
+*.md text eol=lf
+SKILL.md text eol=lf
