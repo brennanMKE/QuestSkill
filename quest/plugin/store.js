@@ -10,6 +10,7 @@ const ALLOWED_FIELDS = new Set([
   "progress",
   "checkpoint",
   "instructionAudit",
+  "plan",
   "completedAt",
 ])
 
@@ -54,6 +55,12 @@ export function validateQuest(value) {
   }
   if (value.completedAt !== undefined && !isTimestamp(value.completedAt)) {
     throw new QuestValidationError("completedAt must be an ISO-8601 timestamp")
+  }
+  if (value.status === "active" && value.completedAt !== undefined) {
+    throw new QuestValidationError("an active Quest cannot have completedAt")
+  }
+  if (value.status === "completed" && value.completedAt === undefined) {
+    throw new QuestValidationError("a completed Quest requires completedAt")
   }
   if (value.progress !== undefined && typeof value.progress !== "string") {
     throw new QuestValidationError("progress must be a string")
@@ -144,6 +151,37 @@ export function validateQuest(value) {
     if (typeof audit.instructionFilesFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(audit.instructionFilesFingerprint)) {
       throw new QuestValidationError("instructionAudit instructionFilesFingerprint must be a SHA-256 hex string")
     }
+  }
+  if (value.plan !== undefined) {
+    if (!Array.isArray(value.plan) || value.plan.length < 3 || value.plan.length > 10) {
+      throw new QuestValidationError("plan must contain between 3 and 10 items")
+    }
+    const ids = new Set()
+    let inProgress = 0
+    for (const item of value.plan) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        throw new QuestValidationError("plan item must be an object")
+      }
+      const allowedPlanFields = new Set(["id", "content", "status", "priority"])
+      for (const field of Object.keys(item)) {
+        if (!allowedPlanFields.has(field)) throw new QuestValidationError(`unknown plan item field ${field}`)
+      }
+      for (const field of ["id", "content"]) {
+        if (typeof item[field] !== "string" || item[field].trim() === "") {
+          throw new QuestValidationError(`plan item ${field} must contain text`)
+        }
+      }
+      if (ids.has(item.id)) throw new QuestValidationError(`duplicate plan item id ${item.id}`)
+      ids.add(item.id)
+      if (!new Set(["pending", "in_progress", "completed", "cancelled"]).has(item.status)) {
+        throw new QuestValidationError("plan item status is invalid")
+      }
+      if (!new Set(["high", "medium", "low"]).has(item.priority)) {
+        throw new QuestValidationError("plan item priority is invalid")
+      }
+      if (item.status === "in_progress") inProgress += 1
+    }
+    if (inProgress > 1) throw new QuestValidationError("plan may contain at most one in_progress item")
   }
   if (value.objectiveRevisions !== undefined) {
     if (!Array.isArray(value.objectiveRevisions)) throw new QuestValidationError("objectiveRevisions must be an array")

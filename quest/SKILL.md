@@ -44,6 +44,14 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
     "nextAction": "...",
     "updatedAt": "<ISO-8601>"
   },
+  "plan": [
+    {
+      "id": "step-1",
+      "content": "...",
+      "status": "pending" | "in_progress" | "completed" | "cancelled",
+      "priority": "high" | "medium" | "low"
+    }
+  ],
   "completedAt": "<ISO-8601>"
 }
 ```
@@ -60,6 +68,7 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
 | `progress` | string (optional) | User-authored or legacy progress text. Display it when present, but do not mutate it automatically during ordinary work. Repository evidence remains authoritative. |
 | `instructionAudit` | object | Startup evaluation of applicable instructions that may force the agent to stop, ask, wait, or return before the Quest work is complete. |
 | `checkpoint` | object (optional) | Durable execution handoff for an actively running multi-step task. It records completed work, current step, remaining work, blockers, verification evidence, and the exact next action. |
+| `plan` | array (optional) | Canonical durable execution checklist mirrored to OpenCode's session-scoped `todowrite` sidebar. |
 | `completedAt` | ISO-8601 (optional) | Set when the agent marks the quest as completed. Leave blank while status is `"active"`. |
 
 ## FILE MANAGEMENT PROTOCOL
@@ -112,7 +121,8 @@ When the user invokes this pattern:
 3. Write the new quest object to `.opencode/quest.json` using the FILE MANAGEMENT PROTOCOL above.
 4. Before confirming readiness or beginning work, run the mandatory **Instruction preflight** below and persist it with `quest_instruction_audit`.
 5. Report the Quest objective and readiness. For `warning`, enumerate the risks and mitigations before continuing. For `blocked`, do not begin work; ask the user to resolve the conflicting instruction. For `clear`, state that no premature-stop conditions were found.
-6. If `.opencode/quest.json` is not already ignored or intentionally tracked, mention once that `/.opencode/quest.json` can be added to the consuming repository's `.gitignore`. Do not edit ignore rules without permission.
+6. If readiness permits work and the Quest needs multiple steps, create the visible checklist using the **Quest plan and OpenCode sidebar** protocol below before implementation.
+7. If `.opencode/quest.json` is not already ignored or intentionally tracked, mention once that `/.opencode/quest.json` can be added to the consuming repository's `.gitignore`. Do not edit ignore rules without permission.
 
 Do not write generated progress notes after ordinary project turns. The v1 command set has no implicit progress mutation; `/quest status` computes its assessment from current evidence without saving it.
 
@@ -141,6 +151,20 @@ If no `instructionAudit` exists on a legacy active Quest, the injected `QUEST PR
 ### `/quest audit` — re-evaluate instruction risks
 
 Re-run the mandatory instruction preflight against the current Quest and current instruction files. Replace the prior `instructionAudit`, report changes in readiness or risks, and resume only when readiness is `clear` or `warning` with actionable mitigations.
+
+## Quest plan and OpenCode sidebar
+
+For every multi-step Quest execution, show a live checklist in OpenCode's right-side task panel. OpenCode's `todowrite` list is session-scoped; the Quest `plan` is its durable source across restarts and compaction.
+
+1. After instruction preflight passes and before substantive work, define 3–10 concrete, outcome-oriented items. Use stable IDs, concise content, `high|medium|low` priority, and `pending|in_progress|completed|cancelled` status.
+2. Save the complete list with `quest_plan`, then immediately call OpenCode's built-in `todowrite` tool with the identical items. Do not merely print a Markdown checklist—the sidebar appears only when `todowrite` is called.
+3. Keep at most one item `in_progress`. Before starting a step, mark it `in_progress` in both `quest_plan` and `todowrite`. After verification, mark it `completed` in both before advancing. Never mark work completed based only on an attempted edit.
+4. If scope changes, update the canonical plan first, then replace the sidebar list with the identical full list. Preserve stable IDs for unchanged work.
+5. On every new session, compaction recovery, or missing/different sidebar, reconstruct `todowrite` from the injected QUEST PLAN before continuing the next action. The repository and persisted Quest plan override stale session todos.
+6. If `todowrite` is unavailable or denied, record that instruction/tool risk in the audit or checkpoint, warn that the sidebar cannot be displayed, and continue using the durable Quest plan when allowed. Do not stop the Quest solely because the visual sidebar is unavailable.
+7. On Quest completion, ensure every applicable plan item is `completed` or deliberately `cancelled`, synchronize the final sidebar once, then complete the Quest. `/quest clear` should clear the visible todo list with `todowrite` when available before removing state.
+
+Single-step actions, status questions, and unrelated work do not require a plan. If a checkpoint exists without a plan on a legacy Quest, create and synchronize a plan from the checkpoint before resuming multi-step work.
 
 ## Long-running execution and context exhaustion
 
@@ -207,22 +231,24 @@ This is NOT a metadata display — it's a real assessment. After reading quest.j
 1. Read `.opencode/quest.json`. If no file exists, say "No active quest — run `/quest <objective>` first."
 2. Replace the `objective` with the new text, append the prior objective to revision history, and update `updatedAt`.
 3. Clear the in-flight checkpoint and prior instruction audit because both may be stale for the new objective. Write back via FILE MANAGEMENT PROTOCOL.
-4. Immediately run and persist a new mandatory instruction preflight. Create a new checkpoint only when execution begins against the updated objective.
-5. Confirm the updated objective and its new readiness/risk summary.
+4. Clear the prior plan because it belongs to the old objective. Immediately run and persist a new mandatory instruction preflight.
+5. When work resumes, create and synchronize a new Quest plan before creating the new checkpoint.
+6. Confirm the updated objective and its new readiness/risk summary.
 
 ### `/quest complete [--force]` — audit and close the quest
 
 1. Read `.opencode/quest.json`. If no file exists or status is already `"completed"`, inform the user.
 2. Run the **completion audit** (see Phase 5 instructions below). Present findings clearly — what was asked, what evidence shows it's done, and any gaps.
-3. If the audit passes (objective genuinely satisfied): flip `status` to `"completed"`, set `completedAt` to current timestamp, write back. Present a concise completion summary.
+3. If the audit passes, verify all applicable Quest plan items are completed or deliberately cancelled and synchronize the final `todowrite` list. Then flip `status` to `"completed"`, set `completedAt`, and present a concise completion summary.
 4. If the audit finds incomplete work: explain what remains, do NOT flip status to completed. Leave quest active.
 5. If `--force` flag is present (or user says "complete it anyway"): run audit, show findings, then unconditionally flip status to completed with a note that this was force-completed.
 
 ### `/quest clear` — remove the quest
 
 1. Read `.opencode/quest.json`. If no file exists, say so and stop.
-2. Delete the `.opencode/quest.json` file (using Bash rm or File tool delete).
-3. Confirm: "Quest cleared." — subsequent responses will no longer inject the ACTIVE QUEST block.
+2. When available, replace OpenCode's `todowrite` list with an empty list so old Quest items do not remain in the sidebar. A denied or unavailable visual tool must not prevent clearing the durable Quest.
+3. Delete the `.opencode/quest.json` file (using Bash rm or File tool delete).
+4. Confirm: "Quest cleared." — subsequent responses will no longer inject the ACTIVE QUEST block.
 
 ### Help text (when `/quest` is invoked without subcommand or with unrecognized arg)
 ```

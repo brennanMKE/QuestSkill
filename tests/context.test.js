@@ -16,6 +16,7 @@ test("active context contains the objective and baseline recovery contract", () 
   assert.match(context, /verify the exact target path before editing/)
   assert.match(context, /create an in-flight checkpoint/)
   assert.match(context, /QUEST PREFLIGHT REQUIRED/)
+  assert.match(context, /QUEST PLAN REQUIRED/)
   assert.doesNotMatch(context, /hidden/)
 })
 
@@ -78,6 +79,29 @@ test("stale instruction audit restores the preflight gate", () => {
   assert.match(context, /QUEST PREFLIGHT REQUIRED/)
   assert.match(context, /files changed since the saved audit/)
   assert.doesNotMatch(context, /Readiness: CLEAR/)
+})
+
+test("durable Quest plan instructs sidebar synchronization", () => {
+  const context = activeQuestContext({
+    objective: "Ship the feature",
+    instructionAudit: {
+      readiness: "clear",
+      reviewedSources: ["AGENTS.md"],
+      risks: [],
+      instructionFilesFingerprint: "a".repeat(64),
+      updatedAt: "2026-08-12T00:00:00.000Z",
+    },
+    plan: [
+      { id: "step-1", content: "Implement storage", status: "completed", priority: "high" },
+      { id: "step-2", content: "Add tests", status: "in_progress", priority: "high" },
+      { id: "step-3", content: "Run verification", status: "pending", priority: "medium" },
+    ],
+  })
+  assert.match(context, /QUEST PLAN/)
+  assert.match(context, /\[completed\] \(high\) step-1: Implement storage/)
+  assert.match(context, /\[in_progress\] \(high\) step-2: Add tests/)
+  assert.match(context, /OpenCode's visible sidebar with the todowrite tool/)
+  assert.match(context, /Maintain at most one in_progress item/)
 })
 
 test("context includes a compact in-flight resume checkpoint", () => {

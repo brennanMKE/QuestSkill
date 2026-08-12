@@ -61,6 +61,8 @@ test("rejects invalid status and timestamps", async () => {
   const root = await project()
   await assert.rejects(writeQuest(root, { ...quest(), status: "paused" }), /status/)
   await assert.rejects(writeQuest(root, { ...quest(), updatedAt: "yesterday" }), /updatedAt/)
+  await assert.rejects(writeQuest(root, { ...quest(), completedAt: "2026-08-12T00:00:00.000Z" }), /active Quest/)
+  await assert.rejects(writeQuest(root, { ...quest(), status: "completed" }), /requires completedAt/)
 })
 
 test("persists and validates a durable execution checkpoint", async () => {
@@ -173,4 +175,36 @@ test("blocking risks cannot be mislabeled as warning readiness", async () => {
       updatedAt: "2026-08-12T00:00:00.000Z",
     },
   }), /warning-only risks/)
+})
+
+test("persists a structured Quest plan", async () => {
+  const root = await project()
+  const plan = [
+    { id: "step-1", content: "Inspect", status: "completed", priority: "high" },
+    { id: "step-2", content: "Implement", status: "in_progress", priority: "high" },
+    { id: "step-3", content: "Verify", status: "pending", priority: "medium" },
+  ]
+  await writeQuest(root, { ...quest(), plan })
+  assert.deepEqual((await readQuest(root)).plan, plan)
+})
+
+test("rejects invalid Quest plans", async () => {
+  const root = await project()
+  await assert.rejects(writeQuest(root, { ...quest(), plan: [] }), /between 3 and 10/)
+  await assert.rejects(writeQuest(root, {
+    ...quest(),
+    plan: [
+      { id: "one", content: "First", status: "in_progress", priority: "high" },
+      { id: "two", content: "Second", status: "in_progress", priority: "high" },
+      { id: "three", content: "Third", status: "pending", priority: "low" },
+    ],
+  }), /at most one in_progress/)
+  await assert.rejects(writeQuest(root, {
+    ...quest(),
+    plan: [
+      { id: "same", content: "First", status: "pending", priority: "high" },
+      { id: "same", content: "Second", status: "pending", priority: "low" },
+      { id: "three", content: "Third", status: "pending", priority: "low" },
+    ],
+  }), /duplicate plan item id/)
 })

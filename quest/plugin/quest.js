@@ -68,7 +68,7 @@ export default async function questPlugin({ directory, worktree }) {
           if (action === "show") return JSON.stringify(current ?? null, null, 2)
           if (action === "clear") {
             await clearQuest(projectRoot)
-            return "Quest cleared."
+            return "Quest cleared. Also clear OpenCode's session-scoped todowrite list so stale Quest items do not remain in the sidebar."
           }
 
           const now = new Date().toISOString()
@@ -94,6 +94,7 @@ export default async function questPlugin({ directory, worktree }) {
             const {
               checkpoint: _checkpoint,
               instructionAudit: _instructionAudit,
+              plan: _plan,
               ...questWithoutCheckpoint
             } = current
             const next = {
@@ -101,10 +102,18 @@ export default async function questPlugin({ directory, worktree }) {
               originalObjective: current.originalObjective ?? current.objective,
               objectiveRevisions: [...(current.objectiveRevisions ?? []), revision],
               objective: cleanObjective,
+              status: "active",
               updatedAt: now,
             }
+            delete next.completedAt
             await writeQuest(projectRoot, next)
-            return JSON.stringify(next, null, 2)
+            return `${JSON.stringify(next, null, 2)}\n\nReplace any stale OpenCode todowrite list after the new preflight and plan are created.`
+          }
+          const audit = await currentInstructionAudit(current, projectRoot)
+          if (!audit.current) throw new Error("Quest instruction preflight is missing or stale; run /quest audit before completing the Quest.")
+          if (current.instructionAudit.readiness === "blocked") throw new Error("Quest instruction preflight is blocked; resolve its blocking risks before completing the Quest.")
+          if (current.plan?.some((item) => !["completed", "cancelled"].includes(item.status))) {
+            throw new Error("Quest plan still contains pending or in_progress work; finish or deliberately cancel every item before completing the Quest.")
           }
           const { checkpoint: _checkpoint, ...questWithoutCheckpoint } = current
           const next = { ...questWithoutCheckpoint, status: "completed", updatedAt: now, completedAt: now }
@@ -181,6 +190,28 @@ export default async function questPlugin({ directory, worktree }) {
           const next = { ...current, instructionAudit, updatedAt: now }
           await writeQuest(projectRoot, next)
           return JSON.stringify(instructionAudit, null, 2)
+        },
+      }),
+      quest_plan: tool({
+        description: "Persist the canonical Quest execution checklist. Mirror the identical list to OpenCode's todowrite tool so it appears in the sidebar. Update both after every status change and restore todowrite from this plan in a new/compacted session.",
+        args: {
+          items: tool.schema.array(tool.schema.object({
+            id: tool.schema.string(),
+            content: tool.schema.string(),
+            status: tool.schema.enum(["pending", "in_progress", "completed", "cancelled"]),
+            priority: tool.schema.enum(["high", "medium", "low"]),
+          })),
+        },
+        async execute({ items }) {
+          const current = await readQuest(projectRoot)
+          if (!current || current.status !== "active") throw new Error("No active Quest exists; create one first.")
+          const audit = await currentInstructionAudit(current, projectRoot)
+          if (!audit.current) throw new Error("Quest instruction preflight is missing or stale; run /quest audit before creating or updating the plan.")
+          if (current.instructionAudit.readiness === "blocked") throw new Error("Quest instruction preflight is blocked; resolve its blocking risks before creating or updating the plan.")
+          const now = new Date().toISOString()
+          const next = { ...current, plan: items, updatedAt: now }
+          await writeQuest(projectRoot, next)
+          return JSON.stringify(items, null, 2)
         },
       }),
     },

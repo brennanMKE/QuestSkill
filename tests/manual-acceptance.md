@@ -7,6 +7,10 @@ Run these checks against a temporary Git project after `./install.sh -y` and an 
 - Blocking instruction conflict: add an applicable rule incompatible with continuous work and verify readiness is `blocked` and no implementation starts until the user resolves it.
 - Legacy gate: remove `instructionAudit` from an active Quest and verify the next turn runs the preflight instead of resuming implementation.
 - Re-audit: change an applicable instruction file, run `/quest audit`, and verify persisted risks/readiness are replaced.
+- Visible plan: start a multi-step Quest and verify OpenCode's right-side checklist appears via `todowrite` before implementation begins.
+- Plan synchronization: verify only one item is in progress and completed items update in both the sidebar and persisted `plan`.
+- Plan restoration: start a new session or compact the current one, then verify the sidebar is reconstructed from the persisted Quest plan before work resumes.
+- Missing visual tool: deny `todowrite` and verify Quest warns about the unavailable sidebar but continues from its durable plan when other instructions permit.
 - Ordinary turn: `Start with the model layer.` receives the active Quest in effective context without manually loading the skill.
 - New session: the ordinary-turn check still observes the Quest.
 - Compaction: run `/compact`; the next ordinary turn still observes the Quest.

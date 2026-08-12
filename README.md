@@ -15,6 +15,7 @@ Quest tracks one active objective per project in a `.opencode/quest.json` file. 
 - **Resume interrupted work** — durable checkpoints preserve completed steps, the current step, remaining work, blockers, and the exact next action when a turn runs out of context
 - **Recover instead of stopping** — compile failures and wrong edits trigger a safe recovery loop based on the current diff and diagnostics rather than ending the Quest with a failure report
 - **Audit instructions before starting** — evaluates applicable `AGENTS.md`, `CLAUDE.md`, project rules, and higher-priority constraints for anything that could force an unexpected stop, question, approval wait, or handoff
+- **Show a live execution plan** — mirrors a durable Quest checklist into OpenCode's right-side task panel using its built-in `todowrite` tool
 - **Evaluate progress honestly** — `/quest status` gives a real assessment of whether work satisfies the objective, not just a metadata dump
 - **Audit before closing** — `/quest complete` runs an actual completion audit against repo state before flipping status
 
@@ -93,6 +94,8 @@ Treat this as the persistent high-level objective for the current project. The u
 ```
 
 The plugin re-reads `.opencode/quest.json` on each model turn and adds this block to effective system context. It does not depend on the model remembering to load the skill.
+
+For multi-step work, Quest also creates a visible checklist in OpenCode's right sidebar. The sidebar list is session-scoped, so Quest persists the canonical copy in `quest.json` and reconstructs the sidebar after a new session or compaction.
 
 ## Commands
 
@@ -193,6 +196,10 @@ Updates preserve the Quest ID, immutable original objective, and compact revisio
 ### Operational checkpoints, not generated progress
 
 Ordinary short tasks and `/quest status` do not save generated progress notes. Long-running execution does write compact operational checkpoints at safe boundaries so work can resume after context exhaustion. A checkpoint is a handoff—not a claim of completion—and repository evidence remains authoritative.
+
+### Durable plan with visible checklist
+
+Before multi-step execution, the agent saves a structured Quest plan and calls OpenCode's `todowrite` tool with the same items. Status updates are written to both places, with at most one item in progress. The persisted plan survives sessions; `todowrite` provides the live right-side UI. If the visual tool is unavailable, Quest warns but continues from the durable plan when permitted.
 
 ### Failures are recovery events
 

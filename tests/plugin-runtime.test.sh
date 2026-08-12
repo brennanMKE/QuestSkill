@@ -69,6 +69,11 @@ await hooks.tool.quest_instruction_audit.execute({
     severity: "warning",
   }],
 }, {})
+await hooks.tool.quest_plan.execute({ items: [
+  { id: "step-1", content: "Migrate model", status: "completed", priority: "high" },
+  { id: "step-2", content: "Migrate service", status: "in_progress", priority: "high" },
+  { id: "step-3", content: "Run tests", status: "pending", priority: "medium" },
+] }, {})
 await hooks.tool.quest_checkpoint.execute({
   action: "save",
   summary: "Model migrated",
@@ -87,6 +92,8 @@ if (!system.system[0]?.includes("Completed: Model")) throw new Error("completed 
 if (!system.system[0]?.includes("Verification: Model tests passed")) throw new Error("verification missing from system context")
 if (!system.system[0]?.includes("Readiness: WARNING")) throw new Error("instruction preflight missing from system context")
 if (!system.system[0]?.includes("Checkpoint and use an allowed fallback first")) throw new Error("instruction mitigation missing from system context")
+if (!system.system[0]?.includes("QUEST PLAN")) throw new Error("Quest plan missing from system context")
+if (!system.system[0]?.includes("todowrite tool")) throw new Error("sidebar synchronization instruction missing")
 
 await hooks.tool.quest_instruction_audit.execute({
   readiness: "blocked",
@@ -129,6 +136,15 @@ await hooks["experimental.session.compacting"]({}, compact)
 if (compact.context.length !== 2) throw new Error("compaction context incomplete")
 if (!compact.context.join("\n").includes("next model turn")) throw new Error("compaction resume instruction missing")
 
+await hooks.tool.quest_state.execute({ action: "complete" }, {}).then(
+  () => { throw new Error("completion bypassed unfinished plan") },
+  (error) => { if (!String(error).includes("pending or in_progress")) throw error },
+)
+await hooks.tool.quest_plan.execute({ items: [
+  { id: "step-1", content: "Migrate model", status: "completed", priority: "high" },
+  { id: "step-2", content: "Migrate service", status: "completed", priority: "high" },
+  { id: "step-3", content: "Run tests", status: "completed", priority: "medium" },
+] }, {})
 await hooks.tool.quest_state.execute({ action: "complete" }, {})
 const completed = JSON.parse(await hooks.tool.quest_state.execute({ action: "show" }, {}))
 if (completed.status !== "completed" || completed.checkpoint !== undefined) {
@@ -155,4 +171,6 @@ await hooks.tool.quest_state.execute({ action: "update", objective: "New scope" 
 const updated = JSON.parse(await hooks.tool.quest_state.execute({ action: "show" }, {}))
 if (updated.checkpoint !== undefined) throw new Error("objective update retained stale checkpoint")
 if (updated.instructionAudit !== undefined) throw new Error("objective update retained stale instruction audit")
+if (updated.plan !== undefined) throw new Error("objective update retained stale plan")
+if (updated.status !== "active" || updated.completedAt !== undefined) throw new Error("objective update did not reopen the Quest")
 NODE
