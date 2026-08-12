@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test",
-    "check": "node --check quest/plugin/quest.js && node --test"
+    "test": "node --test && bash tests/install.test.sh",
+    "check": "node --check quest/plugin/quest.js && node --test && bash tests/install.test.sh"
   }
 }

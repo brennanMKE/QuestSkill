@@ -13,11 +13,14 @@ set -euo pipefail
 
 PROJECT_DIR=""
 ASSUME_YES="${ASSUME_YES:-0}"
-GLOBAL_TARGETS=""
+GLOBAL_TARGETS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --project)   PROJECT_DIR="${2:-}"; shift 2 ;;
+    --project)
+      if [ $# -lt 2 ] || [ -z "$2" ]; then echo "--project requires a directory" >&2; exit 1; fi
+      PROJECT_DIR="$2"; shift 2
+      ;;
     --project=*) PROJECT_DIR="${1#*=}"; shift ;;
     -y|--yes)    ASSUME_YES=1; shift ;;
     -h|--help)   grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -47,12 +50,29 @@ fi
 
 # --- Detect installed tools (global targets) ---
 if have claude || [ -d "$HOME/.claude" ]; then
-  GLOBAL_TARGETS="$GLOBAL_TARGETS $HOME/.claude/skills"
+  GLOBAL_TARGETS+=("$HOME/.claude/skills")
 fi
 OPENCODE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 if have opencode || [ -d "$OPENCODE_DIR" ]; then
-  GLOBAL_TARGETS="$GLOBAL_TARGETS $OPENCODE_DIR/skills"
+  GLOBAL_TARGETS+=("$OPENCODE_DIR/skills")
 fi
+
+prepare_destination() {
+  dest="$1"
+  [ ! -e "$dest" ] && [ ! -L "$dest" ] && return 0
+  if [ "$ASSUME_YES" != "1" ]; then
+    printf 'Replace existing path %s? [y/N] ' "$dest"
+    if [ -r /dev/tty ]; then read -r reply </dev/tty; else reply="N"; fi
+    case "${reply:-N}" in [yY]*) ;; *) echo "  skipped $dest"; return 1 ;; esac
+  fi
+  if [ -L "$dest" ]; then
+    rm -- "$dest"
+  else
+    backup="$dest.quest-backup.$(date +%Y%m%d%H%M%S).$$"
+    mv -- "$dest" "$backup"
+    echo "  backed up $dest to $backup"
+  fi
+}
 
 # --- Link one skill folder into one target dir ---
 link_skill() {
@@ -60,37 +80,30 @@ link_skill() {
   name="$(basename "$src")"
   dest="$targets_dir/$name"
   mkdir -p "$targets_dir"
-  if [ -e "$dest" ] || [ -L "$dest" ]; then
-    if [ "$ASSUME_YES" != "1" ]; then
-      printf 'Replace existing "%s" in %s? [Y/n] ' "$name" "$targets_dir"
-      if [ -r /dev/tty ]; then read -r reply </dev/tty; else reply="Y"; fi
-      case "${reply:-Y}" in [nN]*) echo "  skipped $dest"; return 0 ;; esac
-    fi
-    rm -rf "$dest"
-  fi
+  prepare_destination "$dest" || return 0
   ln -s "$src" "$dest"
   echo "  linked $dest -> $src"
 }
 
 # --- Find every skill (dir containing SKILL.md) and install it ---
-find "$SRC_ROOT" -maxdepth 2 -name SKILL.md -not -path '*/.git/*' -print \
-  | while IFS= read -r skillmd; do
+while IFS= read -r skillmd; do
       skill="$(cd "$(dirname "$skillmd")" && pwd)"
       echo "Installing skill: $(basename "$skill")"
-      for t in $GLOBAL_TARGETS; do link_skill "$skill" "$t"; done
+      for t in "${GLOBAL_TARGETS[@]}"; do link_skill "$skill" "$t"; done
       if [ -n "$PROJECT_DIR" ]; then
         link_skill "$skill" "$PROJECT_DIR/.cursor/skills"
       fi
-    done
+    done < <(find "$SRC_ROOT" -maxdepth 2 -name SKILL.md -not -path '*/.git/*' -print)
 
 # OpenCode plugins must live in its plugin directory to run on every turn.
 QUEST_PLUGIN="$SRC_ROOT/quest/plugin/quest.js"
 if [ -f "$QUEST_PLUGIN" ] && { have opencode || [ -d "$OPENCODE_DIR" ]; }; then
   mkdir -p "$OPENCODE_DIR/plugins"
   plugin_dest="$OPENCODE_DIR/plugins/quest.js"
-  if [ -e "$plugin_dest" ] || [ -L "$plugin_dest" ]; then rm -rf "$plugin_dest"; fi
-  ln -s "$QUEST_PLUGIN" "$plugin_dest"
-  echo "  linked $plugin_dest -> $QUEST_PLUGIN"
+  if prepare_destination "$plugin_dest"; then
+    ln -s "$QUEST_PLUGIN" "$plugin_dest"
+    echo "  linked $plugin_dest -> $QUEST_PLUGIN"
+  fi
 fi
 
 # Register /quest with OpenCode's command loader.
@@ -98,14 +111,15 @@ QUEST_COMMAND="$SRC_ROOT/quest/command/quest.md"
 if [ -f "$QUEST_COMMAND" ] && { have opencode || [ -d "$OPENCODE_DIR" ]; }; then
   mkdir -p "$OPENCODE_DIR/commands"
   command_dest="$OPENCODE_DIR/commands/quest.md"
-  if [ -e "$command_dest" ] || [ -L "$command_dest" ]; then rm -rf "$command_dest"; fi
-  ln -s "$QUEST_COMMAND" "$command_dest"
-  echo "  linked $command_dest -> $QUEST_COMMAND"
+  if prepare_destination "$command_dest"; then
+    ln -s "$QUEST_COMMAND" "$command_dest"
+    echo "  linked $command_dest -> $QUEST_COMMAND"
+  fi
 fi
 
 echo ""
 
-if [ -z "$GLOBAL_TARGETS" ] && [ -z "$PROJECT_DIR" ]; then
+if [ "${#GLOBAL_TARGETS[@]}" -eq 0 ] && [ -z "$PROJECT_DIR" ]; then
   echo "No supported AI tools detected (Claude Code / OpenCode)."
   echo "Cursor is project-scoped: re-run with --project /path/to/your/project"
 elif [ -z "$PROJECT_DIR" ]; then
