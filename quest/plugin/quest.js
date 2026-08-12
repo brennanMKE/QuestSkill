@@ -39,5 +39,9 @@ export default async function questPlugin({ directory, worktree }) {
       const quest = await loadQuest(projectRoot)
       if (quest) output.system.push(activeQuestContext(quest))
     },
+    "experimental.session.compacting": async (_input, output) => {
+      const quest = await loadQuest(projectRoot)
+      if (quest) output.context.push(activeQuestContext(quest))
+    },
   }
 }

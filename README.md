@@ -155,13 +155,14 @@ No active quest — no more ACTIVE QUEST blocks will appear.
 
 Quest state lives in `.opencode/quest.json` (project-local). This file is always the source of truth — even after compaction, restarts, or token-limited sessions. The agent never relies on chat history for quest existence.
 
-### Compaction resilience — skill-level instructions (Option A)
+### Compaction resilience
 
-The current OpenCode agent API does not expose a `session.compacting` plugin hook that agents can use. Therefore compaction resilience is achieved purely through skill-level instructions:
+The plugin uses two supported OpenCode hooks:
 
-1. The persistent file remains intact on disk across compaction (it's a regular `.json` file).
-2. The agent re-reads the file at the top of every response (per FILE MANAGEMENT PROTOCOL), guaranteeing quest re-discovery after compaction.
-3. No TypeScript plugin is needed — skill instructions encode the file-read protocol directly into agent behavior.
+1. `experimental.chat.system.transform` reloads the active Quest into effective context for every model turn.
+2. `experimental.session.compacting` adds the active Quest to the compaction prompt context.
+
+Both hooks load `.opencode/quest.json` afresh. The on-disk file remains authoritative after compaction and restart.
 
 ### Single active quest
 

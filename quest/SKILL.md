@@ -169,15 +169,9 @@ If the verdict is **incomplete**: explain what remains, leave status as `"active
 If the verdict is **complete** and no `--force`: flip status to `"completed"`, set `completedAt`.
 If the verdict is **complete** with `--force`: flip status regardless of gaps, set `completedAt`, note force-complete.
 
-## Compaction resilience (Option A — skill-level instructions)
+## Compaction resilience
 
-There is no `experimental.session.compacting` hook exposed in the current OpenCode agent API surface. The compaction resilience strategy is entirely skill-level:
-
-1. **The persistent file is always the source of truth.** Quest state lives in `.opencode/quest.json`, never solely in chat history. Even after compaction, the file is intact on disk.
-2. **Always re-read.** The FILE MANAGEMENT PROTOCOL (step 1) mandates reading the file at the top of every response — after compaction, before any action. This is the only resilience mechanism needed: the agent re-discovers quest state fresh on each turn, pulling from disk.
-3. **The context injection is also re-read.** The ACTIVE QUEST block content comes from the fresh file read, not cached memory. After compaction + restart of an agent session, the next response will re-discover and re-inject the active quest.
-
-This strategy works because OpenCode's agent model processes each response independently — it doesn't carry over chat memory, so a fresh file read is guaranteed on every turn. The implementation note at Phase 7 documents this decision.
+The companion plugin uses OpenCode's `experimental.session.compacting` hook to add the freshly loaded active Quest to compaction context. It also uses `experimental.chat.system.transform` to reload the file on subsequent turns. The persistent file remains the source of truth; never rely on the compaction summary or chat history as authoritative state.
 
 ## INSTALL INSTRUCTIONS (for the operator, not the agent)
 
