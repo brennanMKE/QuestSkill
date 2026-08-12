@@ -176,6 +176,8 @@ Both hooks load `.opencode/quest.json` afresh. The on-disk file remains authorit
 
 The skill tracks exactly one quest at a time. If you want to work on something else, `/quest clear` the current one first or use `/quest update` to change focus. This prevents context dilution from multiple simultaneous objectives.
 
+Updates preserve the Quest ID, immutable original objective, and compact revision entries. Ordinary context injection includes only the current objective; completion audits may consult the revisions to avoid losing earlier constraints after compaction.
+
 ### Audit, not agreement
 
 `/quest complete` never immediately marks a quest done — it runs a real audit examining repo state, changed files, and evidence of completion. Only the `--force` flag overrides this check.

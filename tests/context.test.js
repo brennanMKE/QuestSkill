@@ -9,6 +9,7 @@ test("context contains only the objective and constraint", () => {
     objective: "Preserve behavior",
     status: "active",
     progress: "hidden",
+    originalObjective: "also hidden",
   })
   assert.match(context, /^ACTIVE QUEST\n\nPreserve behavior\n\nTreat this as/)
   assert.doesNotMatch(context, /hidden/)

@@ -54,13 +54,28 @@ export default async function questPlugin({ directory, worktree }) {
           const now = new Date().toISOString()
           if (action === "create") {
             if (current?.status === "active") throw new Error("An active Quest already exists; update or clear it first.")
-            const next = { id: randomUUID(), objective, status: "active", createdAt: now, updatedAt: now }
+            const next = {
+              id: randomUUID(),
+              objective,
+              originalObjective: objective,
+              objectiveRevisions: [],
+              status: "active",
+              createdAt: now,
+              updatedAt: now,
+            }
             await writeQuest(projectRoot, next)
             return JSON.stringify(next, null, 2)
           }
           if (!current) throw new Error("No Quest exists; create one first.")
           if (action === "update") {
-            const next = { ...current, objective, updatedAt: now }
+            const revision = { objective: current.objective, replacedAt: now }
+            const next = {
+              ...current,
+              originalObjective: current.originalObjective ?? current.objective,
+              objectiveRevisions: [...(current.objectiveRevisions ?? []), revision],
+              objective,
+              updatedAt: now,
+            }
             await writeQuest(projectRoot, next)
             return JSON.stringify(next, null, 2)
           }

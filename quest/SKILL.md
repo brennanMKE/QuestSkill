@@ -21,6 +21,8 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
 {
   "id": "<uuid>",
   "objective": "...",
+  "originalObjective": "...",
+  "objectiveRevisions": [],
   "status": "active" | "completed",
   "createdAt": "<ISO-8601>",
   "updatedAt": "<ISO-8601>",
@@ -33,6 +35,8 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
 |---|---|---|
 | `id` | string | Stable UUID, never changed unless the user explicitly starts over after completion. Generated at creation time. |
 | `objective` | string | The user's stated goal, updated only via `/quest update`. This is the text that gets injected into context on every turn. |
+| `originalObjective` | string | Immutable objective captured when this Quest identity was created. |
+| `objectiveRevisions` | array (optional) | Prior objective text and replacement timestamp, appended by `/quest update`. Do not inject this history on ordinary turns. |
 | `status` | `"active"` or `"completed"` | Controlled by the agent via the `/quest complete` audit (see Phase 5) or `/quest clear`. |
 | `createdAt` | ISO-8601 | Timestamp of creation. Set once, never modified. |
 | `updatedAt` | ISO-8601 | Updated whenever the objective or status changes. |
@@ -152,7 +156,7 @@ Available /quest commands:
 When `/quest complete` is invoked, run the following audit sequence. Do NOT skip it — this is what distinguishes genuine completion from optimistic agreement.
 
 ### Audit steps
-1. Re-read the quest's original objective from `.opencode/quest.json`. This is what needs to be evaluated.
+1. Re-read `originalObjective`, the current `objective`, and `objectiveRevisions` from `.opencode/quest.json`. Evaluate the current objective while using revisions to retain constraints and explain how scope changed.
 2. Examine the current repo state: run `git status`, check modified/added/deleted files, look at git log for recent commits related to the quest.
 3. Read any relevant source files that were changed during work on this quest — verify the changes actually implement what was requested, not just stubs or partial implementations.
 4. Check for outstanding TODOs, FIXMEs, known errors, and compromises made during work (these are often visible in the conversation history or in code comments).
@@ -161,7 +165,7 @@ When `/quest complete` is invoked, run the following audit sequence. Do NOT skip
 
 ### Audit output
 Present findings as a short summary:
-- "What was asked:" — the original objective (verbatim)
+- "What was asked:" — the current objective verbatim; mention the original objective when it materially differs
 - "Evidence of completion:" — what files were changed, what was implemented
 - "Potential gaps:" — any incomplete work, open TODOs, known issues (or state none found)
 - "Verdict:" — complete or incomplete
