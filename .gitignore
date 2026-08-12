@@ -1,2 +1,7 @@
 # Quest state (project-local, gitignored)
 .opencode/
+
+# Local development artifacts
+.DS_Store
+*-workspace/
+iteration-*/

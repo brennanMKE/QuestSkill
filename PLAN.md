@@ -17,7 +17,9 @@ QuestSkill/                       ← repo root (DO NOT put implementation code 
 
 This matches the existing `ESP32GuidanceSkill/esp32-guidance/` layout: everything that gets linked into OpenCode's skills directory lives in `quest/`, not at the repo root.
 
-## Architecture decision — Skill, not TypeScript plugin
+## Architecture decision — Plugin with companion skill
+
+> Implementation update: OpenCode 1.18.16 exposes `experimental.chat.system.transform`, `experimental.session.compacting`, custom tools, and command files. The completed architecture therefore uses `quest/plugin/quest.js` for lifecycle hooks and atomic state operations, `quest/command/quest.md` for `/quest` registration, and `quest/SKILL.md` for repository-aware audit guidance. The earlier skill-only investigation below is retained as decision history but is superseded by this implementation result.
 
 OpenCode's extension model has two layers:
 - **Skills** (`SKILL.md` in a folder, discovered by name + description) — agent instructions loaded on demand via the `skill` tool. This is how every existing skill (esp32-guidance, swift-guidance, issues, mac-release, xcode-build, xcode-cleanup) is implemented.
