@@ -3,6 +3,10 @@
 Run these checks against a temporary Git project after `./install.sh -y` and an OpenCode restart. Record the OpenCode version and result for each release.
 
 - Create: `/quest Keep all existing tests passing.` creates valid `.opencode/quest.json`.
+- Instruction preflight: create `AGENTS.md` and `CLAUDE.md` rules that stop on a tool failure or require asking a question; verify Quest warns with exact sources, triggers, effects, and mitigations before implementation.
+- Blocking instruction conflict: add an applicable rule incompatible with continuous work and verify readiness is `blocked` and no implementation starts until the user resolves it.
+- Legacy gate: remove `instructionAudit` from an active Quest and verify the next turn runs the preflight instead of resuming implementation.
+- Re-audit: change an applicable instruction file, run `/quest audit`, and verify persisted risks/readiness are replaced.
 - Ordinary turn: `Start with the model layer.` receives the active Quest in effective context without manually loading the skill.
 - New session: the ordinary-turn check still observes the Quest.
 - Compaction: run `/compact`; the next ordinary turn still observes the Quest.

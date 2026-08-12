@@ -9,6 +9,7 @@ const ALLOWED_FIELDS = new Set([
   "objectiveRevisions",
   "progress",
   "checkpoint",
+  "instructionAudit",
   "completedAt",
 ])
 
@@ -90,6 +91,58 @@ export function validateQuest(value) {
     }
     if (!isTimestamp(checkpoint.updatedAt)) {
       throw new QuestValidationError("checkpoint updatedAt must be an ISO-8601 timestamp")
+    }
+  }
+  if (value.instructionAudit !== undefined) {
+    const audit = value.instructionAudit
+    if (!audit || typeof audit !== "object" || Array.isArray(audit)) {
+      throw new QuestValidationError("instructionAudit must be an object")
+    }
+    const allowedAuditFields = new Set(["readiness", "reviewedSources", "risks", "instructionFilesFingerprint", "updatedAt"])
+    for (const field of Object.keys(audit)) {
+      if (!allowedAuditFields.has(field)) throw new QuestValidationError(`unknown instructionAudit field ${field}`)
+    }
+    if (!new Set(["clear", "warning", "blocked"]).has(audit.readiness)) {
+      throw new QuestValidationError('instructionAudit readiness must be "clear", "warning", or "blocked"')
+    }
+    if (!Array.isArray(audit.reviewedSources) || audit.reviewedSources.length === 0 || audit.reviewedSources.some((item) => typeof item !== "string" || item.trim() === "")) {
+      throw new QuestValidationError("instructionAudit reviewedSources must contain non-empty source names")
+    }
+    if (!Array.isArray(audit.risks)) throw new QuestValidationError("instructionAudit risks must be an array")
+    for (const risk of audit.risks) {
+      if (!risk || typeof risk !== "object" || Array.isArray(risk)) {
+        throw new QuestValidationError("instructionAudit risk must be an object")
+      }
+      const allowedRiskFields = new Set(["source", "trigger", "effect", "mitigation", "severity"])
+      for (const field of Object.keys(risk)) {
+        if (!allowedRiskFields.has(field)) throw new QuestValidationError(`unknown instructionAudit risk field ${field}`)
+      }
+      for (const field of ["source", "trigger", "effect", "mitigation"]) {
+        if (typeof risk[field] !== "string" || risk[field].trim() === "") {
+          throw new QuestValidationError(`instructionAudit risk ${field} must contain text`)
+        }
+      }
+      if (!new Set(["warning", "blocking"]).has(risk.severity)) {
+        throw new QuestValidationError('instructionAudit risk severity must be "warning" or "blocking"')
+      }
+    }
+    if (audit.readiness === "clear" && audit.risks.length !== 0) {
+      throw new QuestValidationError("a clear instructionAudit cannot contain risks")
+    }
+    if (audit.readiness === "warning" && (audit.risks.length === 0 || audit.risks.some((risk) => risk.severity !== "warning"))) {
+      throw new QuestValidationError("a warning instructionAudit requires one or more warning-only risks")
+    }
+    if (audit.risks.some((risk) => risk.severity === "blocking") && audit.readiness !== "blocked") {
+      throw new QuestValidationError("any blocking instruction risk requires blocked readiness")
+    }
+    if (audit.readiness === "blocked" && !audit.risks.some((risk) => risk.severity === "blocking")) {
+      throw new QuestValidationError("a blocked instructionAudit requires a blocking risk")
+    }
+    if (!isTimestamp(audit.updatedAt)) {
+      throw new QuestValidationError("instructionAudit updatedAt must be an ISO-8601 timestamp")
+    }
+    if (typeof audit.instructionFilesFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(audit.instructionFilesFingerprint)) {
+      throw new QuestValidationError("instructionAudit instructionFilesFingerprint must be a SHA-256 hex string")
     }
   }
   if (value.objectiveRevisions !== undefined) {

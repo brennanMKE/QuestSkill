@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { tool } from "@opencode-ai/plugin"
 import { activeQuestContext } from "./context.js"
 import { resolveProjectRoot } from "./project-root.js"
+import { currentInstructionAudit, instructionFingerprint } from "./instructions.js"
 import { clearQuest, readQuest, validateObjective, writeQuest } from "./store.js"
 
 export async function loadQuest(projectRoot) {
@@ -35,7 +36,10 @@ export default async function questPlugin({ directory, worktree }) {
     "experimental.chat.system.transform": async (_input, output) => {
       try {
         const quest = await readQuest(projectRoot)
-        if (quest?.status === "active") output.system.push(activeQuestContext(quest))
+        if (quest?.status === "active") {
+          const audit = await currentInstructionAudit(quest, projectRoot)
+          output.system.push(activeQuestContext(quest, { instructionAuditCurrent: audit.current }))
+        }
       } catch (error) {
         output.system.push(questStateError(error))
       }
@@ -44,7 +48,8 @@ export default async function questPlugin({ directory, worktree }) {
       try {
         const quest = await readQuest(projectRoot)
         if (quest?.status === "active") {
-          output.context.push(activeQuestContext(quest))
+          const audit = await currentInstructionAudit(quest, projectRoot)
+          output.context.push(activeQuestContext(quest, { instructionAuditCurrent: audit.current }))
           output.context.push("Preserve the active Quest and its in-flight checkpoint in the compaction summary. Include completed work, current step, remaining work, blockers, verification state, and the exact next action so execution can continue on the next model turn after compaction.")
         }
       } catch (error) {
@@ -86,7 +91,11 @@ export default async function questPlugin({ directory, worktree }) {
           if (action === "update") {
             const cleanObjective = validateObjective(objective)
             const revision = { objective: current.objective, replacedAt: now }
-            const { checkpoint: _checkpoint, ...questWithoutCheckpoint } = current
+            const {
+              checkpoint: _checkpoint,
+              instructionAudit: _instructionAudit,
+              ...questWithoutCheckpoint
+            } = current
             const next = {
               ...questWithoutCheckpoint,
               originalObjective: current.originalObjective ?? current.objective,
@@ -118,6 +127,11 @@ export default async function questPlugin({ directory, worktree }) {
         async execute({ action, summary, completed, currentStep, remaining, blockers, verification, nextAction }) {
           const current = await readQuest(projectRoot)
           if (!current || current.status !== "active") throw new Error("No active Quest exists; create one first.")
+          if (action === "save") {
+            const audit = await currentInstructionAudit(current, projectRoot)
+            if (!audit.current) throw new Error("Quest instruction preflight is missing or stale; run /quest audit before starting or resuming work.")
+            if (current.instructionAudit.readiness === "blocked") throw new Error("Quest instruction preflight is blocked; resolve its blocking risks before starting or resuming work.")
+          }
           const now = new Date().toISOString()
           if (action === "clear") {
             const { checkpoint: _checkpoint, ...next } = current
@@ -137,6 +151,36 @@ export default async function questPlugin({ directory, worktree }) {
           const next = { ...current, checkpoint, updatedAt: now }
           await writeQuest(projectRoot, next)
           return JSON.stringify(checkpoint, null, 2)
+        },
+      }),
+      quest_instruction_audit: tool({
+        description: "Persist the mandatory Quest startup review of applicable instructions. Record any rule that could force an early stop, question, report-and-return, retry cutoff, approval wait, or termination after a tool failure. The Quest cannot override higher-priority instructions.",
+        args: {
+          readiness: tool.schema.enum(["clear", "warning", "blocked"]),
+          reviewedSources: tool.schema.array(tool.schema.string()),
+          risks: tool.schema.array(tool.schema.object({
+            source: tool.schema.string(),
+            trigger: tool.schema.string(),
+            effect: tool.schema.string(),
+            mitigation: tool.schema.string(),
+            severity: tool.schema.enum(["warning", "blocking"]),
+          })),
+        },
+        async execute({ readiness, reviewedSources, risks }) {
+          const current = await readQuest(projectRoot)
+          if (!current || current.status !== "active") throw new Error("No active Quest exists; create one first.")
+          const now = new Date().toISOString()
+          const discovered = await instructionFingerprint(projectRoot)
+          const instructionAudit = {
+            readiness,
+            reviewedSources,
+            risks,
+            instructionFilesFingerprint: discovered.fingerprint,
+            updatedAt: now,
+          }
+          const next = { ...current, instructionAudit, updatedAt: now }
+          await writeQuest(projectRoot, next)
+          return JSON.stringify(instructionAudit, null, 2)
         },
       }),
     },

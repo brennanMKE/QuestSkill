@@ -15,7 +15,69 @@ test("active context contains the objective and baseline recovery contract", () 
   assert.match(context, /QUEST EXECUTION CONTRACT/)
   assert.match(context, /verify the exact target path before editing/)
   assert.match(context, /create an in-flight checkpoint/)
+  assert.match(context, /QUEST PREFLIGHT REQUIRED/)
   assert.doesNotMatch(context, /hidden/)
+})
+
+test("instruction preflight warnings are injected with mitigations", () => {
+  const context = activeQuestContext({
+    objective: "Complete every migration task",
+    instructionAudit: {
+      readiness: "warning",
+      reviewedSources: ["AGENTS.md", "CLAUDE.md"],
+      risks: [{
+        source: "CLAUDE.md",
+        trigger: "A tool fails",
+        effect: "Stop and report",
+        mitigation: "Checkpoint first and use an allowed fallback when available",
+        severity: "warning",
+      }],
+      instructionFilesFingerprint: "a".repeat(64),
+      updatedAt: "2026-08-12T00:00:00.000Z",
+    },
+  })
+  assert.match(context, /QUEST INSTRUCTION PREFLIGHT/)
+  assert.match(context, /Readiness: WARNING/)
+  assert.match(context, /CLAUDE\.md: A tool fails → Stop and report/)
+  assert.match(context, /Checkpoint first and use an allowed fallback/)
+  assert.match(context, /does not override them/)
+})
+
+test("blocking instruction conflict gates implementation", () => {
+  const context = activeQuestContext({
+    objective: "Complete every migration task",
+    instructionAudit: {
+      readiness: "blocked",
+      reviewedSources: ["AGENTS.md"],
+      risks: [{
+        source: "AGENTS.md",
+        trigger: "Any test fails",
+        effect: "Return immediately",
+        mitigation: "User must revise or explicitly reconcile the project rule",
+        severity: "blocking",
+      }],
+      instructionFilesFingerprint: "a".repeat(64),
+      updatedAt: "2026-08-12T00:00:00.000Z",
+    },
+  })
+  assert.match(context, /Readiness: BLOCKED/)
+  assert.match(context, /Do not begin or resume implementation/)
+})
+
+test("stale instruction audit restores the preflight gate", () => {
+  const context = activeQuestContext({
+    objective: "Finish safely",
+    instructionAudit: {
+      readiness: "clear",
+      reviewedSources: ["AGENTS.md"],
+      risks: [],
+      instructionFilesFingerprint: "a".repeat(64),
+      updatedAt: "2026-08-12T00:00:00.000Z",
+    },
+  }, { instructionAuditCurrent: false })
+  assert.match(context, /QUEST PREFLIGHT REQUIRED/)
+  assert.match(context, /files changed since the saved audit/)
+  assert.doesNotMatch(context, /Readiness: CLEAR/)
 })
 
 test("context includes a compact in-flight resume checkpoint", () => {

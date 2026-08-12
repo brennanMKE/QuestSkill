@@ -10,4 +10,4 @@ The text supplied after `/quest` is:
 $ARGUMENTS
 ```
 
-Treat an empty argument as a request for Quest help. Preserve the complete argument text when it is an objective; do not split or paraphrase it.
+Treat an empty argument as a request for Quest help. Recognize `audit` as the instruction-risk preflight command. Preserve the complete argument text when it is an objective; do not split or paraphrase it.

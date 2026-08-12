@@ -14,6 +14,7 @@ Quest tracks one active objective per project in a `.opencode/quest.json` file. 
 - **Persist across compaction** — quest state lives on disk, not in chat history; survives token-limited conversations, compaction events, and session boundaries
 - **Resume interrupted work** — durable checkpoints preserve completed steps, the current step, remaining work, blockers, and the exact next action when a turn runs out of context
 - **Recover instead of stopping** — compile failures and wrong edits trigger a safe recovery loop based on the current diff and diagnostics rather than ending the Quest with a failure report
+- **Audit instructions before starting** — evaluates applicable `AGENTS.md`, `CLAUDE.md`, project rules, and higher-priority constraints for anything that could force an unexpected stop, question, approval wait, or handoff
 - **Evaluate progress honestly** — `/quest status` gives a real assessment of whether work satisfies the objective, not just a metadata dump
 - **Audit before closing** — `/quest complete` runs an actual completion audit against repo state before flipping status
 
@@ -100,6 +101,7 @@ The plugin re-reads `.opencode/quest.json` on each model turn and adds this bloc
 | `/quest <objective>` | Create or set the active quest objective. If one already exists, asks whether to replace or clear it first. |
 | `/quest show` | Display the current quest: objective, status, timestamps, progress note. |
 | `/quest status` | Real assessment of progress — what's done, what remains, blockers. Not a metadata dump. |
+| `/quest audit` | Re-run the instruction preflight and warn about rules that could stop work prematurely. |
 | `/quest update <objective>` | Change the quest objective text. New text injected into context on next response. |
 | `/quest complete [--force]` | Run a completion audit against repo state. Flips status only when evidence supports it. `--force` overrides. |
 | `/quest clear` | Delete the active quest file. Subsequent responses no longer inject the ACTIVE QUEST block. |
@@ -195,6 +197,14 @@ Ordinary short tasks and `/quest status` do not save generated progress notes. L
 ### Failures are recovery events
 
 Once checkpointed Quest work is underway, ordinary implementation failures are not terminal. The injected execution contract requires the agent to stop speculative editing, inspect the current file and diff, diagnose the current first error, use small reversible changes, and continue verification. It specifically forbids replacing an existing source file wholesale as an escape from a local structural error. The agent stops only for a genuine user/authority/external blocker after recording an exact resume action.
+
+### Instruction preflight
+
+Creating or materially updating a Quest now requires an instruction audit before implementation begins. The agent reviews applicable `AGENTS.md`, `CLAUDE.md`, project-local rules, loaded skills, and visible higher-priority instructions for conditions that require stopping, asking the user, waiting for approval, limiting retries, reporting and returning, or abandoning work after a tool failure.
+
+The result is persisted as `clear`, `warning`, or `blocked`. Warnings include their source, trigger, likely effect, and a compliant mitigation. Blocking conflicts are shown to the user before work begins. Quest never overrides higher-priority instructions; the audit makes their effect on continuous execution visible early enough to resolve or plan around it.
+
+The plugin fingerprints every discovered `AGENTS.md` and `CLAUDE.md`. Adding, removing, moving, or editing one automatically invalidates the audit and restores the preflight gate. It also refuses to create an execution checkpoint while the audit is missing, stale, or blocked. Use `/quest audit` to record the updated evaluation.
 
 ## Architecture Notes (for developers contributing to this skill)
 

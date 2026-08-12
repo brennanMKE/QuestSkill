@@ -27,6 +27,13 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
   "createdAt": "<ISO-8601>",
   "updatedAt": "<ISO-8601>",
   "progress": "...",
+  "instructionAudit": {
+    "readiness": "clear" | "warning" | "blocked",
+    "reviewedSources": [],
+    "risks": [],
+    "instructionFilesFingerprint": "<SHA-256>",
+    "updatedAt": "<ISO-8601>"
+  },
   "checkpoint": {
     "summary": "...",
     "completed": [],
@@ -51,6 +58,7 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
 | `createdAt` | ISO-8601 | Timestamp of creation. Set once, never modified. |
 | `updatedAt` | ISO-8601 | Updated whenever the objective or status changes. |
 | `progress` | string (optional) | User-authored or legacy progress text. Display it when present, but do not mutate it automatically during ordinary work. Repository evidence remains authoritative. |
+| `instructionAudit` | object | Startup evaluation of applicable instructions that may force the agent to stop, ask, wait, or return before the Quest work is complete. |
 | `checkpoint` | object (optional) | Durable execution handoff for an actively running multi-step task. It records completed work, current step, remaining work, blockers, verification evidence, and the exact next action. |
 | `completedAt` | ISO-8601 (optional) | Set when the agent marks the quest as completed. Leave blank while status is `"active"`. |
 
@@ -92,7 +100,7 @@ Always re-read `.opencode/quest.json` at the top of your response processing —
 
 ## /quest commands
 
-The agent MUST recognize and handle these exact `/quest` command patterns. If the user writes `/quest` without a recognized subcommand, show them the help text (shown in Phase 2 step below).
+The agent MUST recognize and handle these exact `/quest` command patterns. If the user writes `/quest` without a recognized subcommand, show them the help text below.
 
 Reject empty or whitespace-only objectives for create and update. If persistence fails, report the filesystem error and leave the prior Quest unchanged; never claim success before the state tool returns successfully.
 
@@ -102,10 +110,37 @@ When the user invokes this pattern:
 1. Read `.opencode/quest.json`. If it exists and `status === "active"`, warn the user: "There is already an active quest. What would you like to do? (a) replace it with a new quest, or (b) clear the existing one first?" Wait for user input before proceeding.
 2. If no file exists, or status is `"completed"`: create a new quest object with the given objective text. Generate a UUID for `id`. Set `status: "active"`, fill `createdAt` and `updatedAt` with current ISO-8601 timestamp.
 3. Write the new quest object to `.opencode/quest.json` using the FILE MANAGEMENT PROTOCOL above.
-4. Confirm with the user: "Quest created: `<objective>`" — no verbose metadata, just confirmation that the objective is active.
-5. If `.opencode/quest.json` is not already ignored or intentionally tracked, mention once that `/.opencode/quest.json` can be added to the consuming repository's `.gitignore`. Do not edit ignore rules without permission.
+4. Before confirming readiness or beginning work, run the mandatory **Instruction preflight** below and persist it with `quest_instruction_audit`.
+5. Report the Quest objective and readiness. For `warning`, enumerate the risks and mitigations before continuing. For `blocked`, do not begin work; ask the user to resolve the conflicting instruction. For `clear`, state that no premature-stop conditions were found.
+6. If `.opencode/quest.json` is not already ignored or intentionally tracked, mention once that `/.opencode/quest.json` can be added to the consuming repository's `.gitignore`. Do not edit ignore rules without permission.
 
 Do not write generated progress notes after ordinary project turns. The v1 command set has no implicit progress mutation; `/quest status` computes its assessment from current evidence without saving it.
+
+## Mandatory instruction preflight
+
+Run this preflight whenever a Quest is created, when `/quest audit` is invoked, when the objective changes materially, or when applicable instruction files change. Do not start substantive Quest work without a current audit.
+
+1. Discover and read every applicable instruction source from the project root through the target files, including all `AGENTS.md`, `CLAUDE.md`, project-local agent rules, named planning documents, loaded skill instructions, and visible system/developer/user constraints. Record the source paths or instruction-layer names.
+2. Search semantically—not just by keyword—for any condition that can interrupt persistence. Include rules that say or imply: stop; ask before proceeding; report and return; make only one attempt; bail after a tool/build/test failure; wait for approval; do not fix; do not implement; hand work back; final action must be a specific command; or a tool/permission is unavailable.
+3. For each risk, record:
+   - `source`: exact file path or instruction layer
+   - `trigger`: the condition that activates it
+   - `effect`: how it could pause or terminate Quest work
+   - `mitigation`: a compliant way to reduce surprise, such as asking required questions up front, checkpointing before a required stop, choosing an allowed alternative tool, or sequencing verification correctly
+   - `severity`: `warning` when execution can proceed with mitigation; `blocking` when instructions conflict or require user action before work
+4. Set readiness:
+   - `clear`: no risks; `risks` must be empty
+   - `warning`: risks exist but each has a compliant mitigation
+   - `blocked`: at least one applicable instruction prevents safe continuous execution until the user resolves it
+5. Save the complete result with `quest_instruction_audit`. Never claim the audit is clear without listing the sources actually reviewed.
+6. Present warnings before implementation. Be explicit that the Quest cannot override higher-priority instructions. Do not silently reinterpret “stop,” “ask,” or tool restrictions as optional.
+7. The plugin fingerprints all discovered `AGENTS.md` and `CLAUDE.md` files outside ignored build/vendor directories. Adding, removing, moving, or editing one makes the audit stale and restores the hard preflight gate. The plugin also refuses to save an execution checkpoint while the audit is missing, stale, or blocked.
+
+If no `instructionAudit` exists on a legacy active Quest, the injected `QUEST PREFLIGHT REQUIRED` block is a hard gate: perform the audit before resuming implementation.
+
+### `/quest audit` — re-evaluate instruction risks
+
+Re-run the mandatory instruction preflight against the current Quest and current instruction files. Replace the prior `instructionAudit`, report changes in readiness or risks, and resume only when readiness is `clear` or `warning` with actionable mitigations.
 
 ## Long-running execution and context exhaustion
 
@@ -154,6 +189,7 @@ A failure report is supporting evidence, not task completion. Do not end with a 
    - Created timestamp
    - Last updated timestamp
    - Progress note (if present)
+   - Instruction-audit readiness and risk summary (if present); say preflight is required if absent on an active Quest
 
 Do not include the `id` in the display — it's internal bookkeeping.
 
@@ -161,16 +197,18 @@ Do not include the `id` in the display — it's internal bookkeeping.
 
 This is NOT a metadata display — it's a real assessment. After reading quest.json:
 1. Examine the current repo state (run `git status`, inspect recent git logs, look at modified files).
-2. Evaluate the user's stated objective against what has actually changed in the repo.
-3. Provide a concise assessment answering: What's done? What remains? Are there blockers? Is the quest actually complete based on real evidence?
-4. Do NOT just regurgitate stored metadata — synthesize context from the repo and conversation to give a genuine progress evaluation.
+2. Re-check whether the persisted instruction audit is present and still current. If instruction files changed, run `/quest audit` semantics before assessing readiness.
+3. Evaluate the user's stated objective against what has actually changed in the repo.
+4. Provide a concise assessment answering: What's done? What remains? Are there blockers—including instruction risks? Is the quest actually complete based on real evidence?
+5. Do NOT just regurgitate stored metadata — synthesize context from the repo and conversation to give a genuine progress evaluation.
 
 ### `/quest update <new-objective>` — change the objective
 
 1. Read `.opencode/quest.json`. If no file exists, say "No active quest — run `/quest <objective>` first."
 2. Replace the `objective` with the new text, append the prior objective to revision history, and update `updatedAt`.
-3. Clear any in-flight checkpoint because it belongs to the previous objective. Write back via FILE MANAGEMENT PROTOCOL. Create a new checkpoint when execution begins against the updated objective.
-4. Confirm: "Objective updated to: `<new-objective>`" — next response will reflect the new objective.
+3. Clear the in-flight checkpoint and prior instruction audit because both may be stale for the new objective. Write back via FILE MANAGEMENT PROTOCOL.
+4. Immediately run and persist a new mandatory instruction preflight. Create a new checkpoint only when execution begins against the updated objective.
+5. Confirm the updated objective and its new readiness/risk summary.
 
 ### `/quest complete [--force]` — audit and close the quest
 
@@ -192,6 +230,7 @@ Available /quest commands:
   /quest <objective>     Create or set a new quest objective
   /quest show            Show the current quest details
   /quest status          Assess progress against the objective (real evaluation, not just metadata)
+  /quest audit           Re-evaluate instructions that could stop work prematurely
   /quest update <obj>    Change the quest objective
   /quest complete        Audit and mark the quest as completed (requires real evidence)
   /quest clear           Remove the active quest

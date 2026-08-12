@@ -104,3 +104,73 @@ test("rejects incomplete or malformed checkpoints", async () => {
     /checkpoint remaining/,
   )
 })
+
+test("persists an instruction preflight audit", async () => {
+  const root = await project()
+  const instructionAudit = {
+    readiness: "warning",
+    reviewedSources: ["AGENTS.md", "CLAUDE.md"],
+    risks: [{
+      source: "CLAUDE.md",
+      trigger: "Tool failure",
+      effect: "Stop work",
+      mitigation: "Use an allowed fallback and checkpoint before a mandatory stop",
+      severity: "warning",
+    }],
+    instructionFilesFingerprint: "a".repeat(64),
+    updatedAt: "2026-08-12T00:00:00.000Z",
+  }
+  await writeQuest(root, { ...quest(), instructionAudit })
+  assert.deepEqual((await readQuest(root)).instructionAudit, instructionAudit)
+})
+
+test("rejects inconsistent instruction audit readiness", async () => {
+  const root = await project()
+  const risk = {
+    source: "AGENTS.md",
+    trigger: "Question arises",
+    effect: "Stop and ask",
+    mitigation: "Ask required questions during preflight",
+    severity: "warning",
+  }
+  await assert.rejects(writeQuest(root, {
+    ...quest(),
+    instructionAudit: {
+      readiness: "clear",
+      reviewedSources: ["AGENTS.md"],
+      risks: [risk],
+      instructionFilesFingerprint: "a".repeat(64),
+      updatedAt: "2026-08-12T00:00:00.000Z",
+    },
+  }), /clear instructionAudit cannot contain risks/)
+  await assert.rejects(writeQuest(root, {
+    ...quest(),
+    instructionAudit: {
+      readiness: "blocked",
+      reviewedSources: ["AGENTS.md"],
+      risks: [risk],
+      instructionFilesFingerprint: "a".repeat(64),
+      updatedAt: "2026-08-12T00:00:00.000Z",
+    },
+  }), /requires a blocking risk/)
+})
+
+test("blocking risks cannot be mislabeled as warning readiness", async () => {
+  const root = await project()
+  await assert.rejects(writeQuest(root, {
+    ...quest(),
+    instructionAudit: {
+      readiness: "warning",
+      reviewedSources: ["AGENTS.md"],
+      risks: [{
+        source: "AGENTS.md",
+        trigger: "Tool failure",
+        effect: "Stop",
+        mitigation: "Ask user to reconcile the rule",
+        severity: "blocking",
+      }],
+      instructionFilesFingerprint: "a".repeat(64),
+      updatedAt: "2026-08-12T00:00:00.000Z",
+    },
+  }), /warning-only risks/)
+})

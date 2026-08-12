@@ -22,6 +22,55 @@ const hooks = await mod.default({ directory: `${root}/project`, worktree: `${roo
 await hooks.tool.quest_state.execute({ action: "create", objective: "Complete a long migration" }, {})
 await hooks.tool.quest_checkpoint.execute({
   action: "save",
+  summary: "Should not start",
+  completed: [],
+  currentStep: "Preflight",
+  remaining: ["Work"],
+  blockers: [],
+  verification: [],
+  nextAction: "Work",
+}, {}).then(
+  () => { throw new Error("checkpoint save bypassed missing instruction audit") },
+  (error) => { if (!String(error).includes("missing or stale")) throw error },
+)
+await hooks.tool.quest_instruction_audit.execute({
+  readiness: "warning",
+  reviewedSources: ["AGENTS.md", "CLAUDE.md"],
+  risks: [{
+    source: "CLAUDE.md",
+    trigger: "A tool fails",
+    effect: "Stop and return",
+    mitigation: "Checkpoint and use an allowed fallback first",
+    severity: "warning",
+  }],
+}, {})
+await import("node:fs/promises").then(({ writeFile }) => writeFile(`${root}/project/AGENTS.md`, "New stop rule\n"))
+await hooks.tool.quest_checkpoint.execute({
+  action: "save",
+  summary: "Should not use stale audit",
+  completed: [],
+  currentStep: "Stale preflight",
+  remaining: ["Work"],
+  blockers: [],
+  verification: [],
+  nextAction: "Work",
+}, {}).then(
+  () => { throw new Error("checkpoint save bypassed stale instruction audit") },
+  (error) => { if (!String(error).includes("missing or stale")) throw error },
+)
+await hooks.tool.quest_instruction_audit.execute({
+  readiness: "warning",
+  reviewedSources: ["AGENTS.md", "CLAUDE.md"],
+  risks: [{
+    source: "CLAUDE.md",
+    trigger: "A tool fails",
+    effect: "Stop and return",
+    mitigation: "Checkpoint and use an allowed fallback first",
+    severity: "warning",
+  }],
+}, {})
+await hooks.tool.quest_checkpoint.execute({
+  action: "save",
   summary: "Model migrated",
   completed: ["Model"],
   currentStep: "Service",
@@ -36,6 +85,44 @@ await hooks["experimental.chat.system.transform"]({}, system)
 if (!system.system[0]?.includes("IN-FLIGHT CHECKPOINT")) throw new Error("checkpoint missing from system context")
 if (!system.system[0]?.includes("Completed: Model")) throw new Error("completed work missing from system context")
 if (!system.system[0]?.includes("Verification: Model tests passed")) throw new Error("verification missing from system context")
+if (!system.system[0]?.includes("Readiness: WARNING")) throw new Error("instruction preflight missing from system context")
+if (!system.system[0]?.includes("Checkpoint and use an allowed fallback first")) throw new Error("instruction mitigation missing from system context")
+
+await hooks.tool.quest_instruction_audit.execute({
+  readiness: "blocked",
+  reviewedSources: ["AGENTS.md"],
+  risks: [{
+    source: "AGENTS.md",
+    trigger: "Any question",
+    effect: "Stop immediately",
+    mitigation: "User must reconcile the rule",
+    severity: "blocking",
+  }],
+}, {})
+await hooks.tool.quest_checkpoint.execute({
+  action: "save",
+  summary: "Should remain blocked",
+  completed: [],
+  currentStep: "Blocked",
+  remaining: ["Work"],
+  blockers: ["Instruction conflict"],
+  verification: [],
+  nextAction: "Wait for user",
+}, {}).then(
+  () => { throw new Error("checkpoint save bypassed blocked instruction audit") },
+  (error) => { if (!String(error).includes("preflight is blocked")) throw error },
+)
+await hooks.tool.quest_instruction_audit.execute({
+  readiness: "warning",
+  reviewedSources: ["AGENTS.md", "CLAUDE.md"],
+  risks: [{
+    source: "CLAUDE.md",
+    trigger: "A tool fails",
+    effect: "Stop and return",
+    mitigation: "Checkpoint and use an allowed fallback first",
+    severity: "warning",
+  }],
+}, {})
 
 const compact = { context: [] }
 await hooks["experimental.session.compacting"]({}, compact)
@@ -49,6 +136,11 @@ if (completed.status !== "completed" || completed.checkpoint !== undefined) {
 }
 
 await hooks.tool.quest_state.execute({ action: "create", objective: "Replacement quest" }, {})
+await hooks.tool.quest_instruction_audit.execute({
+  readiness: "clear",
+  reviewedSources: ["AGENTS.md"],
+  risks: [],
+}, {})
 await hooks.tool.quest_checkpoint.execute({
   action: "save",
   summary: "Started old scope",
@@ -62,4 +154,5 @@ await hooks.tool.quest_checkpoint.execute({
 await hooks.tool.quest_state.execute({ action: "update", objective: "New scope" }, {})
 const updated = JSON.parse(await hooks.tool.quest_state.execute({ action: "show" }, {}))
 if (updated.checkpoint !== undefined) throw new Error("objective update retained stale checkpoint")
+if (updated.instructionAudit !== undefined) throw new Error("objective update retained stale instruction audit")
 NODE
