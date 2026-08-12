@@ -40,7 +40,7 @@ The plugin deterministically uses OpenCode's `worktree` as the project root. Out
 | `status` | `"active"` or `"completed"` | Controlled by the agent via the `/quest complete` audit (see Phase 5) or `/quest clear`. |
 | `createdAt` | ISO-8601 | Timestamp of creation. Set once, never modified. |
 | `updatedAt` | ISO-8601 | Updated whenever the objective or status changes. |
-| `progress` | string (optional) | Short human-readable summary of progress notes accumulated during work. The agent updates this incrementally as it makes meaningful headway on the quest — not every message, only substantive advances. |
+| `progress` | string (optional) | User-authored or legacy progress text. Display it when present, but do not mutate it automatically during ordinary work. Repository evidence remains authoritative. |
 | `completedAt` | ISO-8601 (optional) | Set when the agent marks the quest as completed. Leave blank while status is `"active"`. |
 
 ## FILE MANAGEMENT PROTOCOL
@@ -100,6 +100,8 @@ When the user invokes this pattern:
 3. Write the new quest object to `.opencode/quest.json` using the FILE MANAGEMENT PROTOCOL above.
 4. Confirm with the user: "Quest created: `<objective>`" — no verbose metadata, just confirmation that the objective is active.
 5. If `.opencode/quest.json` is not already ignored or intentionally tracked, mention once that `/.opencode/quest.json` can be added to the consuming repository's `.gitignore`. Do not edit ignore rules without permission.
+
+Do not write generated progress notes after ordinary project turns. The v1 command set has no implicit progress mutation; `/quest status` computes its assessment from current evidence without saving it.
 
 ### `/quest show` — display current quest
 

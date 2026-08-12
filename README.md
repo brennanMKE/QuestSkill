@@ -182,6 +182,10 @@ Updates preserve the Quest ID, immutable original objective, and compact revisio
 
 `/quest complete` never immediately marks a quest done — it runs a real audit examining repo state, changed files, and evidence of completion. Only the `--force` flag overrides this check.
 
+### No implicit progress writes
+
+Ordinary work does not rewrite Quest state. `/quest status` computes a fresh assessment from repository and session evidence without saving generated notes, avoiding subjective background mutations and permission prompts. A pre-existing `progress` field is displayed but treated as advisory.
+
 ## Architecture Notes (for developers contributing to this skill)
 
 - **Implementation artifact:** `quest/SKILL.md` — all behavior is encoded as agent instructions in a single markdown file.

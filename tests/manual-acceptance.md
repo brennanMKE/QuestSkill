@@ -8,6 +8,7 @@ Run these checks against a temporary Git project after `./install.sh -y` and an 
 - Compaction: run `/compact`; the next ordinary turn still observes the Quest.
 - Update: `/quest update Preserve behavior and add tests.` changes injected context on the next turn.
 - Status: `/quest status` inspects repository evidence and reports work, gaps, blockers, and verdict.
+- No implicit writes: ordinary project turns and `/quest status` leave the Quest file byte-for-byte unchanged.
 - Incomplete completion: `/quest complete` leaves state active when evidence is missing.
 - Clear: `/quest clear` removes the state file and subsequent context injection.
 - Corruption: invalid JSON produces an actionable error without overwriting the file.
